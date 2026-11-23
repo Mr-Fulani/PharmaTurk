@@ -1930,6 +1930,8 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
             search
             and request.query_params.get('search_source') == 'page'
             and request.query_params.get('page', '1') == '1'
+            # С фильтром в учёт попало бы суженное число найденного.
+            and not any(request.query_params.get(name) for name in ('product_type', 'brand_id', 'is_available'))
             and isinstance(response.data, dict)
         ):
             from .search_stats import record_search

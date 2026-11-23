@@ -8,6 +8,10 @@ import {
   readSearchPage,
   searchProductParams,
   searchServiceParams,
+  readSearchFacets,
+  readSearchFilters,
+  hasSearchFilters,
+  searchPageQuery,
   SEARCH_PAGE_SIZE,
 } from './searchResults.js'
 
@@ -17,11 +21,11 @@ test('first page has no page param, next pages ask for the page number', () => {
     page_size: SEARCH_PAGE_SIZE,
     view: 'card',
     include_facets: false,
+    search_facets: 1,
     search_source: 'page',
   })
   assert.equal(searchProductParams('нурофен', 3).page, 3)
-  // В учёт запросов идёт только первая страница, «Показать ещё» — нет.
-  assert.equal(searchProductParams('нурофен', 3).search_source, undefined)
+  assert.equal(searchProductParams('нурофен', 3).search_source, 'page')
 })
 
 test('paginated response gives total count and whether more pages exist', () => {
@@ -63,4 +67,31 @@ test('search_info is shown only for known correction modes', () => {
   assert.equal(readSearchInfo({ search_info: { mode: 'other', query: 'x' } }), null)
   assert.equal(readSearchInfo({ results: [] }), null)
   assert.equal(readSearchInfo([]), null)
+})
+
+test('filters come from the address and go to the API; filtered search is not counted', () => {
+  const filters = readSearchFilters({ type: 'shoes', brand: '12', available: '1', sort: 'price_asc' })
+  assert.deepEqual(filters, { type: 'shoes', brand: 12, available: true, sort: 'price_asc' })
+  assert.equal(hasSearchFilters(filters), true)
+  const params = searchProductParams('кроссовки', 1, filters)
+  assert.deepEqual(
+    [params.product_type, params.brand_id, params.is_available, params.ordering, params.search_facets, params.search_source],
+    ['shoes', 12, true, 'price_asc', 1, 'page'],
+  )
+  assert.equal(searchProductParams('кроссовки', 2, filters).search_facets, undefined)
+  // Мусор в адресе не ломает страницу; сортировка сама по себе фильтром не считается.
+  const plain = readSearchFilters({ brand: 'abc', sort: 'drop table', type: ['a', 'b'] })
+  assert.deepEqual(plain, { type: 'a', brand: null, available: false, sort: 'relevance' })
+  assert.equal(hasSearchFilters(readSearchFilters({ sort: 'newest' })), false)
+  assert.equal(searchProductParams('кроссовки', 1, readSearchFilters({ sort: 'newest' })).search_source, 'page')
+  assert.deepEqual(searchPageQuery('кроссовки', filters), { query: 'кроссовки', type: 'shoes', brand: '12', available: '1', sort: 'price_asc' })
+  assert.deepEqual(searchPageQuery('кроссовки', plain), { query: 'кроссовки', type: 'a' })
+})
+
+test('facets ignore malformed rows', () => {
+  const facets = readSearchFacets({
+    search_facets: { types: [{ value: 'shoes', count: 5 }, { value: 'x', count: 0 }, null], brands: [{ id: 1, name: 'Nike', count: 3 }, { id: 'x' }] },
+  })
+  assert.deepEqual(facets, { types: [{ value: 'shoes', count: 5 }], brands: [{ id: 1, name: 'Nike', count: 3 }] })
+  assert.deepEqual(readSearchFacets([]), { types: [], brands: [] })
 })

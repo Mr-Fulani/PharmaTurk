@@ -451,6 +451,8 @@ def test_search_page_queries_are_counted(make_product):
     APIClient().get(URL, {"search": "парац", "view": "card", "page_size": 6})  # подсказка
     APIClient().get(URL, {"search": "парацетамол", "page": 2, **page})  # «Показать ещё»
 
+    APIClient().get(URL, {"search": "парацетамол", "product_type": "books", **page})  # с фильтром
+
     rows = {row.query: row for row in SearchQueryStat.objects.all()}
     assert set(rows) == {"парацитамол", "шуба"}
     typo = rows["парацитамол"]
@@ -494,3 +496,34 @@ def test_search_queries_admin_list_and_not_found_filter(db, rf):
     assert 'href="/search?query=' in model_admin.open_search(everything[0])
     assert [row.query for row in rows("?found=none")] == ["шуба"]
     assert [row.query for row in rows("?found=fixed")] == ["парацитамол"]
+
+
+def test_search_facets_types_brands_and_filters(make_product):
+    """Фильтры страницы /search: разделы и бренды найденного с количеством; после выбора
+    фильтра список разделов и брендов не схлопывается, а выдача сужается и сортируется."""
+    nike = Brand.objects.create(name="Nike", slug=f"nike-{uuid.uuid4().hex[:6]}")
+    puma = Brand.objects.create(name="Puma", slug=f"puma-{uuid.uuid4().hex[:6]}")
+    shoes = [
+        make_product("Run Sneaker", brand=nike, product_type="shoes"),
+        make_product("Run Sneaker Pro", brand=nike, product_type="shoes"),
+        make_product("Run Sneaker Lite", brand=puma, product_type="shoes"),
+    ]
+    Product.objects.filter(pk=shoes[0].pk).update(price=Decimal("300.00"))
+    Product.objects.filter(pk=shoes[1].pk).update(price=Decimal("100.00"), is_available=False)
+    Product.objects.filter(pk=shoes[2].pk).update(price=Decimal("200.00"))
+    shirt = make_product("Run Shirt", brand=puma, product_type="clothing")
+    _rebuild()
+    base = {"search": "run", "view": "card", "include_facets": "false", "search_facets": "1"}
+
+    data = APIClient().get(URL, base).data
+    assert data["count"] == 4
+    assert data["search_facets"]["types"] == [{"value": "shoes", "count": 3}, {"value": "clothing", "count": 1}]
+    assert [(row["name"], row["count"]) for row in data["search_facets"]["brands"]] == [("Nike", 2), ("Puma", 2)]
+
+    data = APIClient().get(URL, {**base, "product_type": "shoes", "brand_id": nike.pk, "ordering": "price_asc"}).data
+    assert [row["id"] for row in data["results"]] == [shoes[1].pk, shoes[0].pk]
+    assert len(data["search_facets"]["types"]) == 2 and len(data["search_facets"]["brands"]) == 2
+    data = APIClient().get(URL, {**base, "product_type": "shoes", "is_available": "true"}).data
+    assert {row["id"] for row in data["results"]} == {shoes[0].pk, shoes[2].pk}
+    assert "search_facets" not in APIClient().get(URL, {"search": "run", "view": "card"}).data  # подсказкам не нужны
+    assert shirt.pk in _ids({"search": "run"})

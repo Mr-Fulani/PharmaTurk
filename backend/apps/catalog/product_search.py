@@ -551,7 +551,7 @@ _TYPO_MAX_CHECKS = 6
 _TYPO_MAX_FIXES = 3
 
 
-def _typo_correction(query: str) -> str:
+def _typo_correction(query: str, *, typing: bool = True) -> str:
     """Запрос, в котором слова без совпадений заменены похожими словами каталога, или пусто.
     Находит ли исправленный запрос что-нибудь целиком, проверяет ``search_plan``."""
     words = query.split()
@@ -566,7 +566,7 @@ def _typo_correction(query: str) -> str:
     texts = _typo_candidates([words[i] for i in missing])
     changed = False
     for index in missing:
-        replacement = closest_word(words[index], texts, unfinished=index == len(words) - 1)
+        replacement = closest_word(words[index], texts, unfinished=typing and index == len(words) - 1)
         if replacement:
             words[index], changed = replacement, True
     return " ".join(words) if changed else ""
@@ -635,12 +635,17 @@ def request_search_plan(request, search: str) -> Optional[SearchPlan]:
         plans = {}
         setattr(request, "_product_search_plans", plans)
     if search not in plans:
-        plans[search] = search_plan(search)
+        # Страница результатов шлёт запрос целиком (search_source=page), подсказки — по мере набора.
+        plans[search] = search_plan(search, typing=request.query_params.get("search_source") != "page")
     return plans[search]
 
 
-def search_plan(search: str) -> Optional[SearchPlan]:
+def search_plan(search: str, *, typing: bool = True) -> Optional[SearchPlan]:
     """Как искать запрос; ``None`` — индекс пуст, поиск по названию (см. модуль).
+
+    ``typing`` — запрос ещё набирают (подсказки в шапке): последнее слово может быть недописано
+    и дополняется («нурафе» → «нурофен»). Отправленный запрос не дополняется: «пальто»
+    превращалось в «пальмовое» (прод 24.11.2026) — честнее «ничего не нашлось».
 
     Запрос как есть ничего не находит — пробуем другую раскладку («gfhfwtnfvjk» →
     «парацетамол»), чтение латиницы («paracetamol» → «парацетамол», «нурофен» → «nurofen»),
@@ -657,7 +662,7 @@ def search_plan(search: str) -> Optional[SearchPlan]:
     for mode, text in _alternatives(search, query):
         if text and text != query and _index_has(text):
             return SearchPlan(text, mode)
-    corrected = _typo_correction(query)
+    corrected = _typo_correction(query, typing=typing)
     if corrected and _index_has(corrected):
         return SearchPlan(corrected, "typo")
     relaxed = _without_extra_words(corrected or query)
