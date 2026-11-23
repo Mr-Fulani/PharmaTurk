@@ -29,6 +29,9 @@ from django.db.models.signals import post_save
 
 from .search_language import (
     PHRASE_SYNONYMS,
+    PURPOSE_FILLERS,
+    PURPOSE_GROUPS,
+    PURPOSE_MAX_WORDS,
     QUERY_REPLACEMENTS,
     QUERY_SYNONYMS,
     STOP_WORDS,
@@ -465,9 +468,38 @@ def _search_condition(query: str, field: str) -> Optional[Q]:
                 phrase_condition |= Q(**{f"{field}__contains": variant})
             condition &= phrase_condition
     words = _required_words(text.split()) if text.strip() else []
-    for word in words:
-        condition &= word_condition(word, field, alone=len(words) == 1)
+    stems = [stem(word) for word in words]
+    spans = _purpose_spans(stems)
+    index = 0
+    while index < len(words):
+        size, codes = spans.get(index, (1, ()))
+        part = Q()
+        for word in words[index:index + size]:
+            part &= word_condition(word, field, alone=len(words) == 1)
+        if codes:
+            # Назначение: товары, где эти слова написаны, или лекарства лечебной группы (код ATC).
+            for code in codes:
+                part |= _word_start(field, code)
+        elif spans and stems[index] in PURPOSE_FILLERS:
+            part = Q()  # «лекарство от кашля»: слово ничего не уточняет
+        condition &= part
+        index += size
     return condition
+
+
+def _purpose_spans(stems: list[str]) -> dict[int, tuple[int, tuple[str, ...]]]:
+    """Где в запросе назначение («от головной боли»): позиция → (сколько слов, коды ATC)."""
+    spans, index = {}, 0
+    while index < len(stems):
+        for size in range(min(PURPOSE_MAX_WORDS, len(stems) - index), 0, -1):
+            codes = PURPOSE_GROUPS.get(tuple(stems[index:index + size]))
+            if codes:
+                spans[index] = (size, codes)
+                index += size
+                break
+        else:
+            index += 1
+    return spans
 
 
 def _index_has(query: str) -> bool:
