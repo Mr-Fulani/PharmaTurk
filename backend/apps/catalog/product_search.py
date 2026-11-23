@@ -566,7 +566,7 @@ def _typo_correction(query: str) -> str:
     texts = _typo_candidates([words[i] for i in missing])
     changed = False
     for index in missing:
-        replacement = closest_word(words[index], texts)
+        replacement = closest_word(words[index], texts, unfinished=index == len(words) - 1)
         if replacement:
             words[index], changed = replacement, True
     return " ".join(words) if changed else ""

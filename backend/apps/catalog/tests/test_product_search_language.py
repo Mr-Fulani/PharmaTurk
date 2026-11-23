@@ -362,6 +362,14 @@ def test_two_edits_only_in_long_words_and_unfinished_word(make_product):
     data = _search("нурафе")
     assert [row["id"] for row in data["results"]] == [nurofen.pk]
     assert data["search_info"] == {"mode": "typo", "query": "нурофен"}
+    # Дописывается только последнее слово и только с той же первой буквы:
+    # «пальто» превращалось в «мальтодекстрин» (прод 23.11.2026).
+    make_product("RETISOL Альфа-липоевая кислота, мальтодекстрин")
+    _rebuild()
+    assert _ids({"search": "пальто"}) == []
+    assert _ids({"search": "нурафе 200"}) == []
+    assert closest_word("нураф", ["нурофен 400"], unfinished=True) == "нурофен"
+    assert closest_word("нураф", ["нурофен 400"]) == ""
 
 
 def test_typo_candidates_do_not_scan_whole_index(make_product):
