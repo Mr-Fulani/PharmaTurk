@@ -17,8 +17,11 @@ test('first page has no page param, next pages ask for the page number', () => {
     page_size: SEARCH_PAGE_SIZE,
     view: 'card',
     include_facets: false,
+    search_source: 'page',
   })
   assert.equal(searchProductParams('нурофен', 3).page, 3)
+  // В учёт запросов идёт только первая страница, «Показать ещё» — нет.
+  assert.equal(searchProductParams('нурофен', 3).search_source, undefined)
 })
 
 test('paginated response gives total count and whether more pages exist', () => {

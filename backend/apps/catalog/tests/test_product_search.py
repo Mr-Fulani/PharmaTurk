@@ -435,3 +435,62 @@ def test_legacy_search_endpoint_excludes_service_rows_without_external_data_cond
     assert [row["id"] for row in response.data] == [public.pk]
     for sql in (q["sql"] for q in queries.captured_queries if "catalog_productsearchindex" in q["sql"]):
         assert '"catalog_product"."external_data" ?' not in sql
+
+
+def test_search_page_queries_are_counted(make_product):
+    """Учёт запросов: страница /search (search_source=page) пишет запрос, число найденного и то,
+    как он понят; подсказки в шапке и «Показать ещё» не пишут ничего."""
+    from apps.catalog.models_search import SearchQueryStat
+
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    page = {"view": "card", "include_facets": "false", "search_source": "page"}
+
+    for query in ("Парацитамол", "парацитамол", "шуба"):
+        assert APIClient().get(URL, {"search": query, **page}).status_code == 200
+    APIClient().get(URL, {"search": "парац", "view": "card", "page_size": 6})  # подсказка
+    APIClient().get(URL, {"search": "парацетамол", "page": 2, **page})  # «Показать ещё»
+
+    rows = {row.query: row for row in SearchQueryStat.objects.all()}
+    assert set(rows) == {"парацитамол", "шуба"}
+    typo = rows["парацитамол"]
+    assert (typo.searches, typo.results, typo.mode, typo.corrected_query) == (2, 1, "typo", "парацетамол")
+    assert (rows["шуба"].searches, rows["шуба"].results, rows["шуба"].corrected_query) == (1, 0, "")
+
+
+def test_search_stat_failure_does_not_break_search(make_product, monkeypatch):
+    from apps.catalog import search_stats
+
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    monkeypatch.setattr(search_stats.SearchQueryStat.objects, "filter", lambda **kwargs: 1 / 0)
+
+    response = APIClient().get(URL, {"search": "парацетамол", "search_source": "page", "view": "card"})
+    assert response.status_code == 200 and response.data["count"] == 1
+
+
+def test_search_queries_admin_list_and_not_found_filter(db, rf):
+    from django.contrib import admin
+    from django.contrib.auth import get_user_model
+
+    from apps.catalog.models_search import SearchQueryStat
+
+    SearchQueryStat.objects.create(query="шуба", searches=7, results=0)
+    SearchQueryStat.objects.create(query="мидокалм", searches=3, results=7)
+    SearchQueryStat.objects.create(query="парацитамол", searches=2, results=1, mode="typo", corrected_query="парацетамол")
+    admin_user = get_user_model().objects.create_superuser(
+        username="search-admin", email="search-admin@example.com", password="x" * 12
+    )
+    model_admin = admin.site._registry[SearchQueryStat]
+
+    def rows(params=""):
+        request = rf.get(f"/admin/catalog/searchquerystat/{params}")
+        request.user = admin_user
+        return list(model_admin.get_changelist_instance(request).get_queryset(request))
+
+    everything = rows()
+    assert [row.query for row in everything] == ["шуба", "мидокалм", "парацитамол"]  # частые сверху
+    assert model_admin.understood(everything[2]) == "исправлена опечатка → «парацетамол»"
+    assert 'href="/search?query=' in model_admin.open_search(everything[0])
+    assert [row.query for row in rows("?found=none")] == ["шуба"]
+    assert [row.query for row in rows("?found=fixed")] == ["парацитамол"]

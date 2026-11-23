@@ -9,7 +9,9 @@ export function searchProductParams(query, page = 1) {
     page_size: SEARCH_PAGE_SIZE,
     view: 'card',
     include_facets: false,
-    ...(page > 1 ? { page } : {}),
+    // Первая страница выдачи попадает в учёт запросов (админка «Поисковые запросы»);
+    // подсказки в шапке этот параметр не шлют.
+    ...(page > 1 ? { page } : { search_source: 'page' }),
   }
 }
 

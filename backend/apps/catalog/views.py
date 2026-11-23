@@ -1922,6 +1922,17 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         plan = request_search_plan(request, search) if search else None
         if plan is not None and plan.corrected and isinstance(response.data, dict) and response.data.get('count'):
             response.data['search_info'] = {'mode': plan.mode, 'query': plan.query}
+        # Учёт запросов: только первая страница /search (search_source=page), не подсказки в шапке.
+        if (
+            search
+            and request.query_params.get('search_source') == 'page'
+            and request.query_params.get('page', '1') == '1'
+            and isinstance(response.data, dict)
+        ):
+            from .search_stats import record_search
+
+            locale = (getattr(request, 'LANGUAGE_CODE', '') or 'ru')[:2]
+            record_search(search, plan, response.data.get('count') or 0, locale)
         return response
     
     @extend_schema(
