@@ -478,13 +478,23 @@ def _search_condition(query: str, field: str) -> Optional[Q]:
             part &= word_condition(word, field, alone=len(words) == 1)
         if codes:
             # Назначение: товары, где эти слова написаны, или лекарства лечебной группы (код ATC).
+            # Только лекарства: с кода «c08» начинался артикул берета Zara (прод 24.11.2026).
+            group = Q()
             for code in codes:
-                part |= _word_start(field, code)
+                group |= _word_start(field, code)
+            part |= group & Q(**{_product_type_field(field): "medicines"})
         elif spans and stems[index] in PURPOSE_FILLERS:
             part = Q()  # «лекарство от кашля»: слово ничего не уточняет
         condition &= part
         index += size
     return condition
+
+
+def _product_type_field(field: str) -> str:
+    """Путь к типу товара от поля индекса: «text» (запрос по индексу) или «…search_index__text»."""
+    if "search_index__" in field:
+        return field.rsplit("search_index__", 1)[0] + "product_type"
+    return "product__product_type"
 
 
 def _purpose_spans(stems: list[str]) -> dict[int, tuple[int, tuple[str, ...]]]:
@@ -761,7 +771,10 @@ def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optiona
     stems = [stem(word) for word in _required_words(search_words(query)[1])]
     codes = [code for _, span_codes in _purpose_spans(stems).values() for code in span_codes]
     purpose = Case(
-        *(When(_word_start(text, code), then=Value(index)) for index, code in enumerate(codes)),
+        *(
+            When(_word_start(text, code) & Q(**{_product_type_field(text): "medicines"}), then=Value(index))
+            for index, code in enumerate(codes)
+        ),
         default=Value(len(codes)),
         output_field=IntegerField(),
     ) if codes else Value(0, output_field=IntegerField())

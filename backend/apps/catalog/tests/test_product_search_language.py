@@ -432,6 +432,7 @@ def test_purpose_finds_medicines_of_the_group(make_product, make_medicine):
     herbal = make_product("ORGANIER Сироп от кашля, 120 мл")
     codeine = make_medicine("LEVOPRONT (леводропропизин), сироп", atc_code="R05DB27")
     make_product("Мужской головной убор Huf")
+    make_product("Берет с козырьком", sku="C07-BERET-1")  # артикул начинается как код группы
     _rebuild()
 
     medicine_ids = lambda *medicines: {medicine.base_product_id for medicine in medicines}  # noqa: E731
