@@ -13,7 +13,9 @@ from apps.ai.services.medicine_seo import BRAND_NAMESPACE
 from apps.ai.services.translation_memory import remember
 from apps.catalog.models import Brand, Category, CategoryTranslation, MedicineProduct, Product
 from apps.catalog.product_search import iter_search_rows, kind_words, search_plan
-from apps.catalog.search_language import closest_word, edit_distance, latin_to_cyrillic, letter_twin, stem, switch_layout
+from apps.catalog.search_language import (
+    closest_word, edit_distance, latin_to_cyrillic, letter_twin, stem, switch_layout, typo_limit,
+)
 
 from .test_product_search import URL, _ids, _rebuild
 
@@ -316,3 +318,98 @@ def test_no_correction_note_when_nothing_visible(make_product):
     Product.objects.filter(pk=hidden.pk).update(is_active=False)
     data = _search("gfhfwtnfvjk")
     assert data["count"] == 0 and "search_info" not in data
+
+
+def test_pharmacy_names_find_by_substance(make_product):
+    """Прод 23.11.2026: «анальгин» находил PANALGINE, «найз» — органайзер IKEA, «мидокалм»
+    исправлялся в MIDOLAM (мидазолам), «л-тироксин» — пусто."""
+    metamizole = make_product("NOVALGIN (метамизол), 2 мл, 10 ампул")
+    nimesulide = make_product("FRENAG (нимесулид) 1%, гель, 30 г")
+    tolperisone = make_product("VYXTRA (толперизон) 50 мг, таблетки")
+    thyroxine = make_product("LEVOTIRON (левотироксин) 100 мкг")
+    make_product("Выдвижной органайзер для полки IKEA")
+    make_product("MIDOLAM 5 мг/1 мл, раствор")
+    make_product("PANALGINE (кофеин + пропифеназон), таблетки")
+    _rebuild()
+
+    data = _search("анальгин")
+    assert [row["id"] for row in data["results"]] == [metamizole.pk]
+    assert "search_info" not in data  # найдено по словарю, это не исправление
+    assert _ids({"search": "анальгина"}) == [metamizole.pk]
+    assert _ids({"search": "найз"}) == [nimesulide.pk]
+    assert _ids({"search": "мидокалм"}) == [tolperisone.pk]
+    assert _ids({"search": "л-тироксин"}) == [thyroxine.pk]
+
+
+def test_pharmacy_dictionary_keys_are_stems():
+    from apps.catalog.search_language import _PHARMACY_NAMES, _PHARMACY_SHORT_NAMES, QUERY_REPLACEMENTS, QUERY_SYNONYMS
+
+    assert all(stem(name) in QUERY_SYNONYMS for name in _PHARMACY_NAMES)
+    assert all(stem(name) in QUERY_REPLACEMENTS for name in _PHARMACY_SHORT_NAMES)
+    # Вещество ищется частью слова: не короче 6 букв, чтобы не находить чужое.
+    assert all(len(value) >= 6 for values in {**_PHARMACY_NAMES, **_PHARMACY_SHORT_NAMES}.values() for value in values)
+
+
+def test_two_edits_only_in_long_words_and_unfinished_word(make_product):
+    """«глюкофаж» → «глюконат», «диабетон» → «диабет» — две правки в слове из 8 букв давали
+    другое слово. В подсказках запрос приходит недописанным: «нурафе» было пусто."""
+    make_product("Цинк глюконат 10 мг")
+    nurofen = make_product("Нурофен 200 мг")
+    _rebuild()
+
+    assert typo_limit("диабетон") == 1 and typo_limit("парацитам") == 2
+    assert _ids({"search": "глюкотаж"}) == []
+    data = _search("нурафе")
+    assert [row["id"] for row in data["results"]] == [nurofen.pk]
+    assert data["search_info"] == {"mode": "typo", "query": "нурофен"}
+
+
+def test_typo_candidates_do_not_scan_whole_index(make_product):
+    """LIMIT в одном запросе с ``%>`` уводил планировщик в перебор таблицы (прод: 2 с на слово)."""
+    make_product("Метформин 500 мг")
+    _rebuild()
+    with CaptureQueriesContext(connection) as queries:
+        assert search_plan("метформн").query == "метформин"
+    candidates = [q["sql"] for q in queries if "%>" in q["sql"]]
+    assert candidates and all("AS MATERIALIZED" in sql for sql in candidates)
+
+
+def test_extra_word_does_not_empty_results(make_product, monkeypatch):
+    """В названии должно быть каждое слово: «мазь диклофенак» (в каталоге гель), «нурофен детский»
+    давали пустую страницу. Убирается самое частое слово, о замене говорит search_info."""
+    gel = make_product("TRUJEL (диклофенак) 5%, гель")
+    nurofen = make_product("Нурофен 200 мг")
+    for name in ("Мазь календулы", "Мазь ихтиоловая", "Детский крем", "Детский шампунь"):
+        make_product(name)
+    _rebuild()
+
+    data = _search("мазь диклофенак")
+    assert [row["id"] for row in data["results"]] == [gel.pk]
+    assert data["search_info"] == {"mode": "partial", "query": "диклофенак"}
+    data = _search("нурафен детский 200")  # опечатка исправляется до того, как убираются слова
+    assert [row["id"] for row in data["results"]] == [nurofen.pk]
+    assert data["search_info"] == {"mode": "partial", "query": "нурофен 200"}
+    assert "search_info" not in _search("диклофенак гель")
+    assert _ids({"search": "щшгнекуц абвгдежз"}) == []
+    # Остаться должно редкое слово: «мазь» (2 товара) при пороге 1 — общее, не ответ.
+    monkeypatch.setattr("apps.catalog.product_search._PARTIAL_SPECIFIC", 1)
+    assert _ids({"search": "мазь детская"}) == []
+    assert _ids({"search": "мазь диклофенак"}) == [gel.pk]
+    with CaptureQueriesContext(connection) as queries:
+        search_plan("мазь диклофенак")
+    assert len(queries) <= 9, [q["sql"][:80] for q in queries]
+
+
+def test_words_in_name_rank_before_matches_by_ingredient(make_product, make_medicine):
+    """«витамин д3»: первым шёл сироп POLIVIT (короткое название, найден по составу),
+    а «d3» одним словом находил шлем «Mod3»."""
+    syrup = make_medicine("POLIVIT, сироп", active_ingredient="Витамин D3 + Витамин A")
+    drops = make_product("NONDO Витамин D3, капли для приёма внутрь, 10 мл")
+    make_product("Горнолыжный шлем Oakley Mod3")
+    _rebuild()
+
+    assert _ids({"search": "витамин д3"}) == [drops.pk, syrup.base_product_id]
+    assert set(_ids({"search": "d3"})) == {drops.pk, syrup.base_product_id}
+    tablets = make_product("Магний B6, 60 таблеток")
+    _rebuild()
+    assert _ids({"search": "магний б6 таблетки"}) == [tablets.pk]

@@ -145,7 +145,9 @@ export default function SearchPage() {
           <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {searchInfo.mode === 'typo'
               ? t('search_did_you_mean', 'Точных совпадений нет. Возможно, вы искали')
-              : t('search_shown_for', 'Показаны результаты по запросу')}{' '}
+              : searchInfo.mode === 'partial'
+                ? t('search_partial', 'По запросу целиком ничего не нашлось. Показаны результаты по запросу')
+                : t('search_shown_for', 'Показаны результаты по запросу')}{' '}
             <Link href={{ pathname: '/search', query: { query: searchInfo.query } }} className="font-medium text-[var(--accent)] underline">
               «{searchInfo.query}»
             </Link>

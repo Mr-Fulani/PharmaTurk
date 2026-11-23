@@ -119,7 +119,10 @@ def test_search_finds_brand_translation_codes_and_spelling_variants(make_product
     assert _ids({"search": "8699479160029"}) == [shirt.pk]
     assert _ids({"search": "омега 3"}) == [omega.pk]
     assert _ids({"search": "пленочной оболочкой"}) == [film.pk]
-    assert _ids({"search": "polo kadın"}) == []  # каждое слово должно найтись
+    # Каждое слово должно найтись; не нашлось — лишнее слово убирается, и ответ говорит об этом.
+    response = APIClient().get(URL, {"search": "polo kadın", "view": "card", "include_facets": "false"})
+    assert [row["id"] for row in response.data["results"]] == [shirt.pk]
+    assert response.data["search_info"] == {"mode": "partial", "query": "polo"}
 
 
 def test_search_finds_medicine_by_manufacturer_ingredient_and_atc(make_medicine):
