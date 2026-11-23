@@ -54,6 +54,7 @@
   "search_show_more": "Show more",
   "search_shown_for": "Showing results for",
   "search_did_you_mean": "No exact matches. Did you mean",
+  "search_partial": "Nothing matches the whole query. Showing results for",
   "cart_empty": "Your request is empty",
   "cart_empty_description": "Add items to your request to send it to a manager",
   "color_черный": "Black",

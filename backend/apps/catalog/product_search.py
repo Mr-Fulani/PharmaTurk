@@ -9,8 +9,9 @@
 
 Вторая очередь (``search_language``): в текст добавляются бренд и торговое название
 кириллицей, тип товара и пол по-русски и по-английски, названия раздела; в запросе
-отсекаются окончания и учитываются синонимы. Если ничего не нашлось — другая
-раскладка, чтение латиницы кириллицей и обратно, исправление опечатки (``search_plan``).
+отсекаются окончания и учитываются синонимы и аптечные названия. Если ничего не нашлось —
+другая раскладка, чтение латиницы кириллицей и обратно, исправление опечатки, затем запрос
+без слов, которые мешают («мазь диклофенак» → «диклофенак») (``search_plan``).
 
 Пока таблица индекса пуста (до первого ``rebuild_product_search_index --apply``
 на проде), поиск и сигналы работают по-старому: ``name__icontains``.
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from django.db import connection, transaction
-from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Prefetch, Q, Value, When
 from django.db.models.functions import Length
 from django.db.models.signals import post_save
 
@@ -388,7 +389,8 @@ def search_words(search: str) -> tuple[str, list[str]]:
 @dataclass(frozen=True)
 class SearchPlan:
     """По какому тексту искать. ``mode``: words — запрос как есть; layout — другая раскладка;
-    translit — латиница прочитана кириллицей или наоборот; typo — исправлена опечатка."""
+    translit — латиница прочитана кириллицей или наоборот; typo — исправлена опечатка;
+    partial — запрос целиком ничего не находит, убраны мешающие слова."""
 
     query: str
     mode: str = "words"
@@ -415,12 +417,13 @@ def word_condition(word: str, field: str, *, alone: bool = False) -> Q:
     """Одно слово запроса: основа без окончания, синонимы, буква витамина в другом алфавите.
 
     Рядом с другими словами одна буква («витамин с») ищется целым словом, две («он», «d3») —
-    с начала слова, иначе их найдёт почти любой текст. Только LIKE: каждое условие идёт
-    по триграммному индексу.
+    с начала слова, иначе их найдёт почти любой текст. Буква с цифрой («d3», «б6») — с начала
+    слова и в запросе из одного слова: «d3» находил шлем «Mod3». Только LIKE: каждое условие
+    идёт по триграммному индексу.
     """
     twin = letter_twin(word)
     spellings = [word, twin] if twin else [word]
-    if not alone and len(word) <= 2 and not word.isdigit():
+    if len(word) <= 2 and not word.isdigit() and (not alone or word[-1].isdigit()):
         match = _whole_word if len(word) == 1 else _word_start
         condition = Q()
         for spelling in spellings:
@@ -501,7 +504,12 @@ def _typo_candidates(words: list[str]) -> list[str]:
         cursor.execute(
             "SELECT set_config('pg_trgm.word_similarity_threshold', %s, true)", [str(TYPO_CANDIDATE_THRESHOLD)]
         )
-        cursor.execute(f"SELECT text FROM {table} WHERE {condition} LIMIT %s", [*words, 300 * len(words)])
+        # MATERIALIZED: с LIMIT в том же запросе планировщик выбирал перебор всей таблицы
+        # (прод 23.11.2026: «метформн» 1,9 с вместо 45 мс по индексу).
+        cursor.execute(
+            f"WITH found AS MATERIALIZED (SELECT text FROM {table} WHERE {condition}) SELECT text FROM found LIMIT %s",
+            [*words, 300 * len(words)],
+        )
         return [row[0] for row in cursor.fetchall()]
 
 
@@ -512,7 +520,8 @@ _TYPO_MAX_FIXES = 3
 
 
 def _typo_correction(query: str) -> str:
-    """Запрос, в котором слова без совпадений заменены похожими словами каталога, или пусто."""
+    """Запрос, в котором слова без совпадений заменены похожими словами каталога, или пусто.
+    Находит ли исправленный запрос что-нибудь целиком, проверяет ``search_plan``."""
     words = query.split()
     positions = [i for i, word in enumerate(words) if len(word) >= TYPO_MIN_LENGTH and not word.isdigit()]
     positions = positions[:_TYPO_MAX_CHECKS]
@@ -529,6 +538,45 @@ def _typo_correction(query: str) -> str:
         if replacement:
             words[index], changed = replacement, True
     return " ".join(words) if changed else ""
+
+
+# Запросы длиннее не упрощаются: каждое слово — условие в подсчёте и лишняя проверка.
+_PARTIAL_MAX_WORDS = 6
+# Оставшиеся слова должны называть товар: самое редкое из них есть не больше чем в стольких
+# товарах («диклофенак» — 72, «нурофен» — 1). Общее слово — не ответ: «от головной боли» без
+# этого порога показывал головные уборы (293), «жаропонижающее детское» — всё детское (1 236).
+_PARTIAL_SPECIFIC = 200
+
+
+def _without_extra_words(query: str) -> str:
+    """Запрос без слов, из-за которых он целиком ничего не находит, или пусто.
+
+    В названии должно быть каждое слово, и одно лишнее давало пустую страницу: «мазь диклофенак»
+    (в каталоге гель), «нурофен детский», «аспирин кардио» (прод 23.11.2026). Сначала убираются
+    слова, которых нет нигде, затем по одному — самое частое (оно меньше всего говорит о товаре),
+    пока что-нибудь не найдётся и пока среди оставшихся есть редкое слово (``_PARTIAL_SPECIFIC``).
+    Слово из одной-двух букв не убирается: в «витамин к» буква и есть запрос, все витамины вместо
+    него — не ответ. Один подсчёт по индексу и не больше пяти ``EXISTS``.
+    """
+    from .models_search import ProductSearchIndex
+
+    words = list(dict.fromkeys(_required_words(search_words(query)[1])))
+    if not 2 <= len(words) <= _PARTIAL_MAX_WORDS:
+        return ""
+    counts = ProductSearchIndex.objects.aggregate(
+        **{f"word_{index}": Count("pk", filter=word_condition(word, "text")) for index, word in enumerate(words)}
+    )
+    found = {word: counts[f"word_{index}"] for index, word in enumerate(words)}
+    kept = [word for word in words if found[word]]
+    while kept and all(len(word) > 2 for word in words if word not in kept):
+        if len(kept) < len(words) and min(found[word] for word in kept) <= _PARTIAL_SPECIFIC:
+            relaxed = " ".join(word for word in query.split() if word in kept or word not in found)
+            if _index_has(relaxed):
+                return relaxed
+        if len(kept) == 1:
+            break
+        kept.remove(max(kept, key=found.get))
+    return ""
 
 
 def _alternatives(search: str, query: str):
@@ -564,8 +612,8 @@ def search_plan(search: str) -> Optional[SearchPlan]:
 
     Запрос как есть ничего не находит — пробуем другую раскладку («gfhfwtnfvjk» →
     «парацетамол»), чтение латиницы («paracetamol» → «парацетамол», «нурофен» → «nurofen»),
-    затем исправление опечатки. Каждая проверка — ``EXISTS`` по индексу, только пока
-    ничего не нашлось; найденный текст ищется и сортируется как обычный запрос.
+    затем исправление опечатки и запрос без мешающих слов. Каждая проверка — ``EXISTS`` по
+    индексу, только пока ничего не нашлось; найденный текст ищется и сортируется как обычный запрос.
     """
     if not search_index_ready():
         return None
@@ -580,6 +628,9 @@ def search_plan(search: str) -> Optional[SearchPlan]:
     corrected = _typo_correction(query)
     if corrected and _index_has(corrected):
         return SearchPlan(corrected, "typo")
+    relaxed = _without_extra_words(corrected or query)
+    if relaxed:
+        return SearchPlan(relaxed, "partial")
     return SearchPlan(query)
 
 
@@ -605,7 +656,8 @@ def _line_equals(field: str, value: str) -> Q:
 
 def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optional[SearchPlan] = None):
     """Точное название или бренд → название начинается с запроса → запрос с начала
-    слова в названии → остальное; внутри — короче название, в наличии, новее.
+    слова в названии → все слова запроса есть в названии → остальное (найдено по веществу,
+    производителю, разделу); внутри — короче название, в наличии, новее.
 
     Ключи сортировки считаются для всех совпадений, поэтому только дешёвые: LIKE и
     длина названия. Регулярки и ``similarity`` на 8,8 тыс. совпадений стоили ≈ 0,8 с
@@ -623,7 +675,10 @@ def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optiona
         When(_line_equals(names, query) | _line_equals(brand, query), then=Value(0)),
         When(Q(**{f"{names}__startswith": query}) | Q(**{f"{names}__contains": f"\n{query}"}), then=Value(1)),
         When(**{f"{names}__contains": f" {query}"}, then=Value(2)),
-        default=Value(3),
+        # «витамин д3»: в названиях «Витамин D3», запрос строкой не совпадает — без этой ступени
+        # первыми шли короткие названия, найденные по составу (сироп POLIVIT).
+        When(_search_condition(query, names), then=Value(3)),
+        default=Value(4),
         output_field=IntegerField(),
     )
     return queryset.annotate(search_tier=tier, search_name_length=Length("name")).order_by(

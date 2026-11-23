@@ -46,10 +46,11 @@ export function appendSearchPage(existing, incoming) {
 }
 
 // Нашлось не по запросу как есть (бэкенд: search_info) → {mode, query} или null.
-// mode: layout — другая раскладка, translit — латиницей, typo — исправлена опечатка.
+// mode: layout — другая раскладка, translit — латиницей, typo — исправлена опечатка,
+// partial — запрос целиком ничего не нашёл, часть слов убрана.
 export function readSearchInfo(data) {
   const info = data && !Array.isArray(data) ? data.search_info : null
   if (!info || typeof info.query !== 'string' || !info.query) return null
-  if (!['layout', 'translit', 'typo'].includes(info.mode)) return null
+  if (!['layout', 'translit', 'typo', 'partial'].includes(info.mode)) return null
   return { mode: info.mode, query: info.query }
 }
