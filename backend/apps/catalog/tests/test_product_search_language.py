@@ -413,3 +413,39 @@ def test_words_in_name_rank_before_matches_by_ingredient(make_product, make_medi
     tablets = make_product("Магний B6, 60 таблеток")
     _rebuild()
     assert _ids({"search": "магний б6 таблетки"}) == [tablets.pk]
+
+
+def test_purpose_finds_medicines_of_the_group(make_product, make_medicine):
+    """Прод 23.11.2026: «от головной боли», «жаропонижающее», «таблетки от давления» — пусто:
+    в карточках таких слов нет. Назначение ищет лекарства лечебной группы по коду ATC."""
+    parol = make_medicine("PAROL (парацетамол) 500 мг, таблетки, 20 шт.", atc_code="N02BE01")
+    syrup = make_medicine("CALPOL (парацетамол) 120 мг/5 мл, детский сироп", atc_code="N02BE01")
+    concor = make_medicine("CONCOR (бисопролол) 5 мг, таблетки", atc_code="C07AB07")
+    herbal = make_product("ORGANIER Сироп от кашля, 120 мл")
+    codeine = make_medicine("LEVOPRONT (леводропропизин), сироп", atc_code="R05DB27")
+    make_product("Мужской головной убор Huf")
+    _rebuild()
+
+    medicine_ids = lambda *medicines: {medicine.base_product_id for medicine in medicines}  # noqa: E731
+    assert set(_ids({"search": "от головной боли"})) == medicine_ids(parol, syrup)
+    assert set(_ids({"search": "жаропонижающее"})) == medicine_ids(parol, syrup)
+    assert _ids({"search": "жаропонижающее детское"}) == [syrup.base_product_id]
+    assert _ids({"search": "таблетки от давления"}) == [concor.base_product_id]
+    # Товар, где слова написаны, находится вместе с группой; «лекарство», «чем лечить» не мешают.
+    assert set(_ids({"search": "лекарство от кашля"})) == {herbal.pk, codeine.base_product_id}
+    assert set(_ids({"search": "чем лечить кашель"})) == {herbal.pk, codeine.base_product_id}
+    assert "search_info" not in _search("от головной боли")
+
+
+def test_purpose_keys_are_stems_and_codes_are_atc():
+    import re
+
+    from apps.catalog.search_language import _PURPOSES, PURPOSE_GROUPS, STOP_WORDS
+
+    for phrases, codes in _PURPOSES:
+        assert all(re.fullmatch(r"[a-z]\d{2}[a-z]{0,2}\d{0,2}", code) for code in codes), codes
+        for phrase in phrases:
+            key = tuple(stem(word) for word in phrase.split() if word not in STOP_WORDS)
+            assert key and PURPOSE_GROUPS[key] == codes, phrase
+    # Успокоительных, снотворных и антидепрессантов в словаре нет намеренно.
+    assert not any(code.startswith(("n05", "n06")) for codes in PURPOSE_GROUPS.values() for code in codes)
