@@ -384,6 +384,9 @@ def test_ikea_fetches_details_only_for_changed_rows(monkeypatch):
         }
     )
     fetched = []
+    # Без подмены тест открывал страницу раздела на ikea.com.tr: 23.11.2026 сайт не отвечал
+    # серверам CI, и сборка main падала дважды подряд.
+    monkeypatch.setattr(parser.ikea_service, "resolve_category_api_slug", lambda url, slug: slug)
     monkeypatch.setattr(
         parser.ikea_service,
         "get_category_products",
