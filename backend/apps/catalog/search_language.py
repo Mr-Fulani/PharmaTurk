@@ -318,6 +318,11 @@ TYPO_CANDIDATE_THRESHOLD = 0.4
 TYPO_MIN_LENGTH = 5
 
 
+# В слове до пяти букв первая буква не исправляется: это уже другое слово
+# («халат» → «малат», прод 23.11.2026); «сиалис» → «циалис» (6 букв) исправляется.
+_SAME_FIRST_LETTER = 5
+
+
 def typo_limit(word: str) -> int:
     """Сколько букв можно исправить: одну в словах до 8 букв, две — в длинных.
 
@@ -356,7 +361,7 @@ def closest_word(word: str, texts, *, unfinished: bool = False) -> str:
                 counts[token] = counts.get(token, 0) + 1
     best, best_key = "", None
     for token, count in counts.items():
-        if abs(len(token) - len(word)) > limit:
+        if abs(len(token) - len(word)) > limit or (len(word) <= _SAME_FIRST_LETTER and token[0] != word[0]):
             continue
         distance = edit_distance(word, token)
         key = (distance, -count, token)

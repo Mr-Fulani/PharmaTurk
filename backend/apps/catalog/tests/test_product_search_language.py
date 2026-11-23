@@ -457,3 +457,26 @@ def test_purpose_keys_are_stems_and_codes_are_atc():
             assert key and PURPOSE_GROUPS[key] == codes, phrase
     # Успокоительных, снотворных и антидепрессантов в словаре нет намеренно.
     assert not any(code.startswith(("n05", "n06")) for codes in PURPOSE_GROUPS.values() for code in codes)
+
+
+def test_whole_word_ranks_above_longer_word_and_inner_part(make_product, make_medicine):
+    """Прод 23.11.2026: по «dress» первым шёл комод Dresser, по «стол» — столики, по «коран» в
+    выдаче стоял NICORANDIL; «халат» читался как «halat» и находил ингаляторы (inhalation)."""
+    dresser = make_product("HAUGA Dresser")
+    dress = make_product("United4 Women's Slim Fit Dress, Black")
+    side_table = make_product("Столик BURVIK")
+    desk = make_product("Рабочий стол IKEA RIMFORSA, бамбук")
+    book = make_product("Сура Аль-Аср: размышления над Кораном, издание для детей")
+    nicorandil = make_medicine("IKOREL (никорандил) 10 мг", atc_code="C01DX16")
+    make_product("SPIRIVA Inhalation powder")
+    make_product("Магний малат")
+    gel = make_product("ARTRIL (ибупрофен) 5%, гель")
+    caps = make_product("BRAVEX (ибупрофен) 400 мг, мягкие капсулы, 30 шт.")
+    _rebuild()
+
+    assert _ids({"search": "dress"}) == [dress.pk, dresser.pk]
+    assert _ids({"search": "стол"}) == [desk.pk, side_table.pk]
+    assert _ids({"search": "коран"}) == [book.pk, nicorandil.base_product_id]
+    assert _ids({"search": "ибупрофен 400"}) == [caps.pk, gel.pk]  # запрос целиком в названии — первым
+    assert _ids({"search": "халат"}) == []  # ни «halat» внутри слова, ни «малат»
+    assert closest_word("сиалис", ["циалис 5 мг"]) == "циалис"
