@@ -44,8 +44,12 @@ export function searchProductParams(query, page = 1, filters = null) {
     ...(filters?.brand ? { brand_id: filters.brand } : {}),
     ...(filters?.available ? { is_available: true } : {}),
     ...(filters?.sort && filters.sort !== 'relevance' ? { ordering: filters.sort } : {}),
-    // Разделы и бренды найденного нужны один раз, с первой страницей.
-    ...(page > 1 ? { page } : { search_facets: 1 }),
+    // С первой страницей: разделы и бренды найденного (один раз) и учёт запроса (админка
+    // «Поисковые запросы») — только без фильтров, иначе в учёт попало бы суженное число.
+    // Подсказки в шапке этих параметров не шлют.
+    ...(page > 1
+      ? { page }
+      : { search_facets: 1, ...(filters?.type || filters?.brand || filters?.available ? {} : { search_source: 'page' }) }),
   }
 }
 

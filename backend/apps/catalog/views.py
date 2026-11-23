@@ -1925,6 +1925,17 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         # Фильтры страницы /search: разделы и бренды найденного (docs/PRODUCT_SEARCH.md).
         if search and request.query_params.get('search_facets') == '1' and isinstance(response.data, dict):
             response.data['search_facets'] = self._search_facets(search, plan)
+        # Учёт запросов: только первая страница /search (search_source=page), не подсказки в шапке.
+        if (
+            search
+            and request.query_params.get('search_source') == 'page'
+            and request.query_params.get('page', '1') == '1'
+            and isinstance(response.data, dict)
+        ):
+            from .search_stats import record_search
+
+            locale = (getattr(request, 'LANGUAGE_CODE', '') or 'ru')[:2]
+            record_search(search, plan, response.data.get('count') or 0, locale)
         return response
     
     # Брендов в списке фильтра — самые частые; остальные находятся уточнением запроса.
