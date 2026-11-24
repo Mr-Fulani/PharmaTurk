@@ -1253,6 +1253,10 @@ class SemanticValidator:
                 and _sports_kind_covers(_normalized(title), conflicting_match, locale)
             ):
                 conflicting_match = ""
+            # Вид автозапчасти берётся из словаря по разделу источника, модель его не выдумывает,
+            # а наше дерево разделов короче: «Компрессор кондиционера» лежит в «Системе охлаждения».
+            if product_type == "auto_parts":
+                conflicting_match = ""
             if conflicting_match:
                 report.rejected_fields.add("title")
                 report.reasons.append("title_category_mismatch")
