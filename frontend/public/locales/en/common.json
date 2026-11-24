@@ -1812,5 +1812,16 @@
   "section_nav_perfumery": "Perfumery",
   "section_nav_accessories": "Accessories",
   "section_nav_all": "All sections",
-  "header_catalog": "Catalog"
+  "header_catalog": "Catalog",
+  "auto_part_numbers_title": "Part numbers",
+  "auto_part_number_label": "Manufacturer part number",
+  "auto_part_oem_title": "Original numbers (OEM)",
+  "auto_part_cross_title": "Cross-reference numbers",
+  "auto_part_fitment_title": "Fits these vehicles",
+  "auto_part_fitment_hint": "Body and engine versions: {{count}}. Please check the part by OEM number or VIN before ordering.",
+  "auto_part_fitment_retry": "Could not load the list. Retry",
+  "auto_part_fitment_body": "Model and body",
+  "auto_part_fitment_engine": "Engine",
+  "auto_part_fitment_power": "Power",
+  "auto_part_fitment_years": "Production years"
 }

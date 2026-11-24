@@ -28,6 +28,7 @@ import MobileStickyBuyBar from '../../components/MobileStickyBuyBar'
 import { stickyBuyBarMode } from '../../lib/stickyBuyBar'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
+import AutoPartFitment, { AutoPartFitmentSummary, AutoPartNumber } from '../../components/AutoPartFitment'
 import FavoriteButton from '../../components/FavoriteButton'
 import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
@@ -569,6 +570,10 @@ interface Product {
   furniture_type?: string | null
   dimensions?: string | null
   gender?: string | null
+  // Автозапчасти
+  part_number?: string | null
+  oem_numbers?: AutoPartNumber[] | null
+  fitment_summary?: AutoPartFitmentSummary | null
 }
 
 type ProductSourceRefreshState = {
@@ -3171,6 +3176,16 @@ export default function ProductPage({
         {isService && Array.isArray((product as any).portfolio_items) && (product as any).portfolio_items.length > 0 && (
           <ServicePortfolioStaticList
             items={(product as any).portfolio_items as ServicePortfolioItem[]}
+          />
+        )}
+
+        {/* Автозапчасть: OEM-номера и список автомобилей, к которым подходит деталь */}
+        {(productType === 'auto-parts' || product.product_type === 'auto_parts') && (
+          <AutoPartFitment
+            productSlug={product.slug}
+            partNumber={product.part_number}
+            numbers={product.oem_numbers}
+            summary={product.fitment_summary}
           />
         )}
 

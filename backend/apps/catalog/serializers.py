@@ -7261,6 +7261,8 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
 
     
     similar_products = serializers.SerializerMethodField()
+    oem_numbers = serializers.SerializerMethodField()
+    fitment_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = AutoPartProduct
@@ -7276,6 +7278,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'part_number', 'car_brand', 'car_model', 'compatibility_years', 'product_type',
+            'oem_numbers', 'fitment_summary',
             'price_formatted', 'old_price_formatted', 
             'similar_products',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -7284,6 +7287,42 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
 
     def get_similar_products(self, obj):
         return []
+
+    # Столько номеров отдаётся в карточку (у деталей пилота — до 47).
+    OEM_NUMBERS_LIMIT = 100
+
+    def get_oem_numbers(self, obj):
+        """OEM-номера и аналоги для блока карточки: номер, вид, чей номер."""
+        return [
+            {"number": number, "kind": kind, "maker": maker}
+            for number, kind, maker in obj.numbers.order_by("kind", "number_normalized").values_list(
+                "number", "kind", "maker",
+            )[: self.OEM_NUMBERS_LIMIT]
+        ]
+
+    def get_fitment_summary(self, obj):
+        """Сводка применимости: марки с моделями и числом строк — один запрос с группировкой.
+
+        Сами строки (кузов, двигатель, годы — до ~900 на деталь) карточка подгружает по марке
+        отдельным запросом (``/fitments``): в ответ страницы они не входят (DEVELOPMENT_RULES §2.1).
+        """
+        from apps.ai.services.rules.auto_part_vocab import model_name, proper_name
+
+        locale = _banner_api_language(self.context)
+        makes: dict = {}
+        total = 0
+        rows = obj.fitments.order_by().values("make", "make_slug", "model").annotate(rows=Count("id")).order_by(
+            "make", "model",
+        )
+        for row in rows:
+            entry = makes.setdefault(
+                row["make_slug"], {"slug": row["make_slug"], "name": proper_name(row["make"]), "count": 0, "models": []},
+            )
+            entry["count"] += row["rows"]
+            total += row["rows"]
+            if row["model"]:
+                entry["models"].append(model_name(row["model"], locale))
+        return {"count": total, "makes": list(makes.values())}
 
     def _get_default_variant(self, obj):
         return obj.variants.filter(is_available=True).order_by('id').first() or obj.variants.order_by('id').first()
