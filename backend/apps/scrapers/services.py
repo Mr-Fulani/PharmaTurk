@@ -62,6 +62,7 @@ from .base.scraper import (
 )
 from apps.catalog.services import CatalogNormalizer, build_image_alt_text
 from apps.http_errors import SourceRateLimitedError
+from .auto_parts import sync_auto_part_data
 from apps.catalog.utils.tr_vocab import (
     match_turkish_product_term,
     normalize_ascii_text as normalize_tr_ascii_text,
@@ -110,7 +111,7 @@ BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
 # Парсер сам выбирает раздел товара (``attributes["<source>_category_slugs"]``).
-SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah", "spx"})
+SELF_ROUTED_SOURCES = frozenset({"superstep", "intersport", "seniorah", "spx", "aloparca"})
 # Магазины с общими кодами товаров (артикул и цвет производителя): «intersport-J1008254.855»,
 # «superstep-J1008254.855» и «spx-J1008254.855» — один и тот же мяч. На сайте остаётся более
 # дорогой (решение владельца 13.11.2026, ``store_twins``): новый не создаётся, если у соседа
@@ -4546,6 +4547,10 @@ class ScraperIntegrationService:
         if updated:
             existing_product.save()
 
+        # Автозапчасти: артикул, OEM-номера и применимость — в свои таблицы.
+        if sync_auto_part_data(existing_product, scraped_product):
+            content_changed = True
+
         # Обрабатываем аналоги, если это медицина
         if existing_product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
             self._process_medicine_analogs(existing_product, scraped_product, session)
@@ -5566,6 +5571,9 @@ class ScraperIntegrationService:
         self._apply_authoritative_product_overrides(product, scraped_product)
 
         self._flag_new_hospital_medicine(product, scraped_product)
+
+        # Автозапчасти: артикул, OEM-номера и применимость — в свои таблицы.
+        sync_auto_part_data(product, scraped_product)
 
         # Обрабатываем аналоги, если это медицина
         if product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):

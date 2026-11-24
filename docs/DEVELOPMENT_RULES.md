@@ -253,6 +253,19 @@ docker-compose за nginx и Cloudflare.
    админку с полем `main_image_file` подключать к этому миксину и к `MainMediaPreviewAdminMixin`
    (превью главного фото; оба в `admin_base.py`/`admin_media.py`). Тест — `test_main_photo_to_gallery.py`.
 
+20. **Номера и применимость автозапчастей — в своих таблицах, не в `external_data`.** Артикул
+   хранится как у источника (`part_number`) и в виде для поиска (`part_number_normalized`: заглавные
+   латинские буквы и цифры, `normalize_part_number`); OEM-номера и аналоги — `AutoPartNumber`,
+   автомобили — `AutoPartFitment` (до ~900 строк на деталь). Парсер отдаёт их в
+   `ScrapedProduct.auto_part`, а не в `attributes`: иначе они попали бы в `external_data` товара и
+   доменной записи и в журнал товаров (§2.9). Записывает `apps/scrapers/auto_parts.py`: заменяются
+   только строки своего источника, добавленные вручную (поле «Откуда» пустое) остаются. Номер ищется
+   по нормализованному виду, не `icontains` по `number`. Строка применимости, которую не удалось
+   разобрать, не отбрасывается — остаётся в «Примечании». Массовые записи мимо `save()`
+   (`bulk_create`, `update()`) заполняют `number_normalized`, `make_slug`, `model_slug` сами.
+   Источник автозапчастей обходится выборочно («Макс. товаров»), вежливо и без прокси; проверка
+   Cloudflare — остановка, а не обход (`SCRAPERS_GUIDE.md`, §6.5.4; [AUTO_PARTS_AI_DESIGN.md](AUTO_PARTS_AI_DESIGN.md)).
+
 ## 4. Фронтенд (Next.js)
 
 1. Страница > ~400 строк — выделяй компоненты/хуки. В `pages/` — только роутинг, мета и gSSP; логика — в `components/`, `lib/`, `hooks/`.

@@ -7024,7 +7024,7 @@ class AutoPartProductImage(models.Model):
     )
     image_file = models.ImageField(
         _("Файл изображения"),
-        upload_to=get_product_upload_path,
+        upload_to=get_domain_gallery_upload_path,
         max_length=500,
         null=True,
         blank=True

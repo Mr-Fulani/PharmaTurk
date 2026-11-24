@@ -17,6 +17,7 @@ EXPECTED_PARSERS = {
     "bershka",
     "pullandbear",
     "superstep",
+    "aloparca",
 }
 
 
