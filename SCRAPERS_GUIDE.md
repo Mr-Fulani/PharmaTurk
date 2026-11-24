@@ -700,6 +700,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `superstep` | `SuperstepParser` | superstep.com.tr, www.superstep.com.tr |
 | `intersport` | `IntersportParser` | intersport.com.tr, www.intersport.com.tr |
 | `spx` | `SpxParser` | spx.com.tr, www.spx.com.tr |
+| `aloparca` | `AloparcaParser` | aloparca.com, www.aloparca.com |
 | `bershka` | `BershkaParser` | bershka.com, www.bershka.com |
 | `pullandbear` | `PullAndBearParser` | pullandbear.com, www.pullandbear.com |
 | `massimodutti` | `MassimoDuttiParser` | massimodutti.com, www.massimodutti.com |
@@ -1229,6 +1230,87 @@ JSON без прокси и без защиты: `/products.json` (весь ка
 в `.env` прода и пересоздать `backend`, `celeryworker`, `celerybeat`.
 
 Тесты: `backend/apps/scrapers/test_seniorah_parser.py` (ответы — `test_fixtures/seniorah/`).
+
+### 6.5.4. Aloparça (`aloparca.com`) — автозапчасти
+
+`AloparcaParser` — первый источник раздела «Автозапчасти» (решение владельца 24.11.2026; условия
+сайта запрещают копирование, риск принят — `reports/auto-parts-sources-audit-2026-11-24.md`).
+Сайт на PHP/Livewire, готового API нет. Данные карточки берутся из двух мест:
+
+- **снимок компонента `product-detail`** (`wire:snapshot` в HTML): характеристики (`criteria`),
+  применимость (`compatibleVehicles`: марка → строки «модель, кузов с годами, двигатель с кВт/л. с.
+  и годами») и OEM-номера с маркой (`oems`); составные значения Livewire (`[данные, {"s": …}]`)
+  разворачивает `unwrap_livewire`;
+- **вёрстка блока товара**: бренд («Marka:»), артикул («Stok Kodu:»), вид детали (`<h1>`), название
+  продавца, цена (`text-3xl font-bold text-gray-900`, только в блоке «Masaüstü için fiyat alanı» —
+  внизу страницы те же классы), «Stokta var» / «Stokta yok», фото (массив Alpine `images: […]`, база
+  `https://googlecdn.aloparca.com/yedek-parca-resimleri/`); раздел — из снимка компонента `breadcrumb`.
+
+Что сохраняется:
+
+- `name` — «<вид детали> <бренд> <артикул>» («Ateşleme Bujisi BOSCH 0242236596»), название продавца —
+  `attributes["source_title"]` и первая строка описания; описание собирается из характеристик, OEM и
+  марок применимости (пустым не бывает). Русские названия — следующий шаг (словари, `AUTO_PARTS_AI_DESIGN.md`).
+- `external_id = aloparca-<номер товара у источника>`, `sku` — артикул, бренд — со страницы
+  («Мультибрендовый магазин» включён), цена в лирах; «Stokta yok» — «нет в наличии», цена остаётся.
+- Характеристики — `attributes["specs"]` (в `external_data`), там же сводка: `oem_count`,
+  `fitment_count`, `fitment_unparsed`, `fitment_makes`, `aloparca_breadcrumbs`.
+- **Артикул, OEM-номера и применимость — в свои таблицы**, не в `external_data`: парсер кладёт их в
+  `ScrapedProduct.auto_part` (`part_number`, `numbers`, `fitments`), сервис пишет
+  `apps/scrapers/auto_parts.py::sync_auto_part_data` → `AutoPartProduct.part_number(_normalized)`,
+  `AutoPartNumber`, `AutoPartFitment`. До ~900 строк применимости на деталь в `external_data` и в
+  журнале товаров (`ScrapedProductLog`) не попадают. Повторный проход заменяет только строки своего
+  источника (`source = "aloparca"`); добавленные вручную в админке (поле «Откуда» пустое) остаются.
+- Строка применимости, у которой двигатель не разобрался по шаблону «… (N kW / M PS) (мм.гггг - мм.гггг)»,
+  не теряется: марка, модель и кузов заполнены, сама строка — в «Примечании», годы — от кузова; число
+  таких строк — в «Причине остановки» чанка и в `fitment_unparsed`.
+- Раздел — по адресу раздела источника в хлебных крошках (`ALOPARCA_SECTION_ROUTES`,
+  `ALOPARCA_SUBSECTION_ROUTES`): «Fren → Fren Disk» → «Тормозные диски»; подраздела у нас нет — раздел
+  второго уровня, нет и его (масла и жидкости) — корень «Автозапчасти». `aloparca` в `SELF_ROUTED_SOURCES`:
+  корень в задаче раскладку не перебивает, явно выбранная подкатегория — да.
+
+**Обход — по карте сайта.** `/sitemap.xml` → 17 файлов `/sitemaps/products-N.xml` по 20 000 адресов
+`/product/<бренд>-<артикул>-<название>` с датой изменения (всего ~340 тыс.). «Раздел» парсера — файл
+карты сайта; выборку сужают параметры ссылки, карточки при этом не открываются:
+
+| Ссылка задачи | Что обходится |
+|---|---|
+| `https://aloparca.com/product/<адрес>` | одна карточка |
+| `https://aloparca.com/sitemaps/products-1.xml` | карточки файла подряд |
+| `…/products-1.xml?brand=bosch` | только бренд (адрес карточки начинается с `bosch-`) |
+| `…/products-1.xml?q=fren-balatasi` | карточки, в адресе которых есть эти слова (несколько — через запятую) |
+| `…/products-1.xml?brand=bosch&q=fren-diski` | бренд и слова вместе |
+
+Фильтр `q` смотрит на адрес карточки, а в нём название продавца: обычно вид детали там есть
+(«fren-diski», «yag-filtresi»), но не всегда — часть карточек раздела фильтр не увидит.
+«Страница» обхода — 20 адресов (≈ 1 минута), чанки и «Продолжить» работают; «Весь сайт» — файлы по
+очереди, **весь каталог не обходить** (≈ 10 суток): объём задаёт «Макс. товаров».
+Точечный обход: отпечаток строки — дата изменения карточки в карте сайта (`ListingGuard`), карточка с
+той же датой повторно не открывается. Снятая карточка (404/410) пропускается.
+
+**Вежливый режим** (`_make_request` парсера): один поток, не чаще запроса в 2,5 с на процесс
+(`MIN_REQUEST_INTERVAL`, больше — «Минимальной задержкой» настроек), **без прокси** (`use_proxy`
+парсер сбрасывает сам), честное имя робота `MudarobaBot/1.0` (сайт отвечает ему так же, как
+браузеру — проверено 24.11.2026; `robots.txt` разрешает всем, кроме роботов обучения ИИ).
+403 или страница проверки Cloudflare (`cf-mitigated: challenge`, «Just a moment…») —
+`ScraperAccessBlockedError` сразу, без повторов: защиту не обходим. 429/503 — ожидание 60 и 180 с,
+затем `SourceRateLimitedError`. Пять карточек подряд без блока данных — `AloparcaFormatError`
+(вёрстка сменилась), обход останавливается; одиночная — в счётчик ошибок.
+
+**Настройка в админке** — запись «aloparca» создаёт миграция `scrapers/0038_aloparca_scraper_config`
+(без сети; если записи ещё нет и в каталоге есть «Автозапчасти»): задержка 2,5–4 с, 5 страниц и
+50 товаров за запуск, 8 медиа на товар, автосинхронизация выключена, прокси выключен.
+
+Фото идут через общий конвейер медиа; галерея автозапчастей сохраняется в папку раздела и товара
+(`AutoPartProductImage.image_file` → `get_domain_gallery_upload_path`, миграция `catalog/0249`; до неё —
+в `products/other/…`). Пилот 50 карточек — `reports/aloparca-parser-2026-11-24.md`.
+
+**Не сделано (следующие шаги):** проверка наличия при открытии карточки и ночная сверка
+(`check_offer`), русские названия и SEO по словарям, блоки «Подходит к автомобилям» и «OEM-номера»
+на карточке сайта, фильтр по автомобилю, поиск по номеру детали.
+
+Тесты: `backend/apps/scrapers/test_aloparca_parser.py` (фрагменты настоящих страниц —
+`test_fixtures/aloparca/`), `backend/apps/catalog/tests/test_auto_part_numbers.py`.
 
 ### 6.6. LC Waikiki (`lcw.com`)
 

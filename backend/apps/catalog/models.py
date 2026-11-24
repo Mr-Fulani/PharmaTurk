@@ -6956,6 +6956,14 @@ class AutoPartProduct(AbstractDomainProduct):
     )
     
     part_number = models.CharField(_("Артикул"), max_length=100, blank=True)
+    part_number_normalized = models.CharField(
+        _("Артикул для поиска"),
+        max_length=100,
+        blank=True,
+        db_index=True,
+        editable=False,
+        help_text=_("Артикул без пробелов и дефисов, заглавными буквами. Заполняется сам."),
+    )
     car_brand = models.CharField(_("Марка авто"), max_length=100, blank=True)
     car_model = models.CharField(_("Модель авто"), max_length=100, blank=True)
     compatibility_years = models.CharField(_("Годы совместимости"), max_length=50, blank=True)
@@ -6965,6 +6973,12 @@ class AutoPartProduct(AbstractDomainProduct):
         verbose_name_plural = _("Автозапчасти")
         
     def save(self, *args, **kwargs):
+        from .utils.part_numbers import normalize_part_number
+
+        self.part_number_normalized = normalize_part_number(self.part_number)[:100]
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "part_number" in update_fields:
+            kwargs["update_fields"] = [*update_fields, "part_number_normalized"]
         super().save(*args, **kwargs)
         self._sync_to_base_product()
 
@@ -7010,7 +7024,7 @@ class AutoPartProductImage(models.Model):
     )
     image_file = models.ImageField(
         _("Файл изображения"),
-        upload_to=get_product_upload_path,
+        upload_to=get_domain_gallery_upload_path,
         max_length=500,
         null=True,
         blank=True
@@ -7115,6 +7129,119 @@ class AutoPartVariantImage(models.Model):
     class Meta:
         verbose_name = _("Изображение варианта")
         verbose_name_plural = _("Изображения вариантов")
+
+
+class AutoPartNumber(models.Model):
+    """Номер детали: оригинальный (OEM) или номер-аналог другого производителя."""
+
+    class Kind(models.TextChoices):
+        OEM = "oem", _("Оригинальный (OEM)")
+        CROSS = "cross", _("Аналог")
+
+    product = models.ForeignKey(
+        AutoPartProduct,
+        on_delete=models.CASCADE,
+        related_name="numbers",
+        verbose_name=_("Автозапчасть"),
+    )
+    number = models.CharField(_("Номер"), max_length=100, help_text=_("Как написан у источника."))
+    number_normalized = models.CharField(
+        _("Номер для поиска"),
+        max_length=100,
+        db_index=True,
+        editable=False,
+        help_text=_("Без пробелов и дефисов, заглавными буквами. Заполняется сам."),
+    )
+    kind = models.CharField(_("Вид номера"), max_length=10, choices=Kind.choices, default=Kind.OEM)
+    maker = models.CharField(
+        _("Чей номер"),
+        max_length=255,
+        blank=True,
+        help_text=_("Марка автомобиля или производитель, которому принадлежит номер."),
+    )
+    source = models.CharField(
+        _("Откуда"),
+        max_length=32,
+        blank=True,
+        help_text=_("Название парсера; пусто — номер добавлен вручную."),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Номер автозапчасти (OEM, аналог)")
+        verbose_name_plural = _("Номера автозапчастей (OEM, аналоги)")
+        ordering = ["kind", "number_normalized"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "kind", "number_normalized"],
+                name="autopartnumber_unique_per_product",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        from .utils.part_numbers import normalize_part_number
+
+        self.number_normalized = normalize_part_number(self.number)[:100]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.number} ({self.maker})" if self.maker else self.number
+
+
+class AutoPartFitment(models.Model):
+    """Применимость: один автомобиль (кузов и двигатель), к которому подходит деталь."""
+
+    product = models.ForeignKey(
+        AutoPartProduct,
+        on_delete=models.CASCADE,
+        related_name="fitments",
+        verbose_name=_("Автозапчасть"),
+    )
+    make = models.CharField(_("Марка"), max_length=64)
+    make_slug = models.CharField(_("Марка (для фильтра)"), max_length=64, editable=False)
+    model = models.CharField(_("Модель"), max_length=64, blank=True)
+    model_slug = models.CharField(_("Модель (для фильтра)"), max_length=64, blank=True, editable=False)
+    generation = models.CharField(
+        _("Кузов / поколение"),
+        max_length=160,
+        blank=True,
+        help_text=_("Как у источника, с годами выпуска кузова: «Passat B6 (3C2) (03.2005 - 07.2010)»."),
+    )
+    year_from = models.PositiveSmallIntegerField(_("Год с"), null=True, blank=True)
+    month_from = models.PositiveSmallIntegerField(_("Месяц с"), null=True, blank=True)
+    year_to = models.PositiveSmallIntegerField(
+        _("Год по"), null=True, blank=True, help_text=_("Пусто — выпускается до сих пор или год неизвестен."),
+    )
+    month_to = models.PositiveSmallIntegerField(_("Месяц по"), null=True, blank=True)
+    engine = models.CharField(_("Двигатель"), max_length=128, blank=True)
+    power_kw = models.PositiveSmallIntegerField(_("Мощность, кВт"), null=True, blank=True)
+    power_hp = models.PositiveSmallIntegerField(_("Мощность, л. с."), null=True, blank=True)
+    note = models.CharField(
+        _("Примечание"),
+        max_length=255,
+        blank=True,
+        help_text=_("Оговорки источника и строки, которые не удалось разобрать по полям."),
+    )
+    source = models.CharField(_("Откуда"), max_length=32, blank=True)
+
+    class Meta:
+        verbose_name = _("Применимость автозапчасти")
+        verbose_name_plural = _("Применимость автозапчастей")
+        ordering = ["make", "model", "generation", "year_from", "engine"]
+        indexes = [
+            models.Index(fields=["make_slug", "model_slug"], name="autopartfit_make_model_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        from .utils.part_numbers import vehicle_slug
+
+        self.make_slug = vehicle_slug(self.make)
+        self.model_slug = vehicle_slug(self.model)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return " ".join(part for part in (self.make, self.model, self.engine) if part)
+
 
 # ============================================================================
 # ДОМЕН Headwear
