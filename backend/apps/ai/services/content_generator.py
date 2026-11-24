@@ -80,6 +80,7 @@ from apps.ai.services.medicine_title import (
 from apps.ai.services.ownership import SOURCE_CHANGED_KEY, SOURCE_DESCRIPTION_KEY, SOURCE_NAME_KEY
 from apps.ai.services.result_applier import build_content_snapshot
 from apps.ai.services.rules.facts import RULE_PRODUCT_TYPES
+from apps.ai.services.rules.auto_parts import run_auto_part_content
 from apps.ai.services.rules.pipeline import (
     plan_rule_content,
     run_rule_content,
@@ -401,12 +402,19 @@ class ContentGenerator:
                 )
                 # Не медицинские домены: название/SEO/атрибуты — правилами,
                 # LLM только переводит описание (см. apps/ai/services/rules).
+                # Автозапчасть: карточка целиком из фактов (вид, бренд, артикул, OEM, применимость),
+                # модель не вызывается (apps/ai/services/rules/auto_parts.py).
+                is_auto_part = getattr(product, "product_type", None) == "auto_parts" and processing_type in (
+                    "full", "description_only"
+                )
                 rule_plan = (
                     None
-                    if is_medicine or is_supplement
+                    if is_medicine or is_supplement or is_auto_part
                     else plan_rule_content(product, collected_input, processing_type)
                 )
-                if is_supplement:
+                if is_auto_part:
+                    generation_result = run_auto_part_content(product)
+                elif is_supplement:
                     generation_result = run_supplement_content(
                         product, collected_input, self.llm, log_entry
                     )
@@ -503,7 +511,7 @@ class ContentGenerator:
                 self._save_generation_usage(log_entry, generation_result)
 
                 # Парсинг результатов
-                if rule_plan is not None or is_supplement:
+                if rule_plan is not None or is_supplement or is_auto_part:
                     validate_rule_content(content)
                 else:
                     self._validate_generated_content(content, processing_type)
