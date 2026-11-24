@@ -438,6 +438,7 @@ def test_purpose_finds_medicines_of_the_group(make_product, make_medicine):
     herbal = make_product("ORGANIER Сироп от кашля, 120 мл")
     codeine = make_medicine("LEVOPRONT (леводропропизин), сироп", atc_code="R05DB27")
     make_product("Мужской головной убор Huf")
+    make_product("Берет с козырьком", sku="C07-BERET-1")  # артикул начинается как код группы
     _rebuild()
 
     medicine_ids = lambda *medicines: {medicine.base_product_id for medicine in medicines}  # noqa: E731
@@ -449,6 +450,10 @@ def test_purpose_finds_medicines_of_the_group(make_product, make_medicine):
     assert set(_ids({"search": "лекарство от кашля"})) == {herbal.pk, codeine.base_product_id}
     assert set(_ids({"search": "чем лечить кашель"})) == {herbal.pk, codeine.base_product_id}
     assert "search_info" not in _search("от головной боли")
+    # Основная группа назначения (N02B) — раньше второй (M01A), даже с более длинным названием.
+    sulindac = make_medicine("SULINDAC 200 мг", atc_code="M01AB02")
+    _rebuild()
+    assert _ids({"search": "от головной боли"})[-1] == sulindac.base_product_id
 
 
 def test_purpose_keys_are_stems_and_codes_are_atc():
@@ -463,3 +468,26 @@ def test_purpose_keys_are_stems_and_codes_are_atc():
             assert key and PURPOSE_GROUPS[key] == codes, phrase
     # Успокоительных, снотворных и антидепрессантов в словаре нет намеренно.
     assert not any(code.startswith(("n05", "n06")) for codes in PURPOSE_GROUPS.values() for code in codes)
+
+
+def test_whole_word_ranks_above_longer_word_and_inner_part(make_product, make_medicine):
+    """Прод 23.11.2026: по «dress» первым шёл комод Dresser, по «стол» — столики, по «коран» в
+    выдаче стоял NICORANDIL; «халат» читался как «halat» и находил ингаляторы (inhalation)."""
+    dresser = make_product("HAUGA Dresser")
+    dress = make_product("United4 Women's Slim Fit Dress, Black")
+    side_table = make_product("Столик BURVIK")
+    desk = make_product("Рабочий стол IKEA RIMFORSA, бамбук")
+    book = make_product("Сура Аль-Аср: размышления над Кораном, издание для детей")
+    nicorandil = make_medicine("IKOREL (никорандил) 10 мг", atc_code="C01DX16")
+    make_product("SPIRIVA Inhalation powder")
+    make_product("Магний малат")
+    gel = make_product("ARTRIL (ибупрофен) 5%, гель")
+    caps = make_product("BRAVEX (ибупрофен) 400 мг, мягкие капсулы, 30 шт.")
+    _rebuild()
+
+    assert _ids({"search": "dress"}) == [dress.pk, dresser.pk]
+    assert _ids({"search": "стол"}) == [desk.pk, side_table.pk]
+    assert _ids({"search": "коран"}) == [book.pk, nicorandil.base_product_id]
+    assert _ids({"search": "ибупрофен 400"}) == [caps.pk, gel.pk]  # запрос целиком в названии — первым
+    assert _ids({"search": "халат"}) == []  # ни «halat» внутри слова, ни «малат»
+    assert closest_word("сиалис", ["циалис 5 мг"]) == "циалис"

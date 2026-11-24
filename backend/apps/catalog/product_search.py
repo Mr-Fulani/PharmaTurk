@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from django.db import connection, transaction
-from django.db.models import Case, Count, IntegerField, Prefetch, Q, Value, When
-from django.db.models.functions import Length
+from django.db.models import Case, Count, IntegerField, Prefetch, Q, TextField, Value, When
+from django.db.models.functions import Concat, Length, Replace
 from django.db.models.signals import post_save
 
 from .search_language import (
@@ -478,13 +478,23 @@ def _search_condition(query: str, field: str) -> Optional[Q]:
             part &= word_condition(word, field, alone=len(words) == 1)
         if codes:
             # Назначение: товары, где эти слова написаны, или лекарства лечебной группы (код ATC).
+            # Только лекарства: с кода «c08» начинался артикул берета Zara (прод 24.11.2026).
+            group = Q()
             for code in codes:
-                part |= _word_start(field, code)
+                group |= _word_start(field, code)
+            part |= group & Q(**{_product_type_field(field): "medicines"})
         elif spans and stems[index] in PURPOSE_FILLERS:
             part = Q()  # «лекарство от кашля»: слово ничего не уточняет
         condition &= part
         index += size
     return condition
+
+
+def _product_type_field(field: str) -> str:
+    """Путь к типу товара от поля индекса: «text» (запрос по индексу) или «…search_index__text»."""
+    if "search_index__" in field:
+        return field.rsplit("search_index__", 1)[0] + "product_type"
+    return "product__product_type"
 
 
 def _purpose_spans(stems: list[str]) -> dict[int, tuple[int, tuple[str, ...]]]:
@@ -507,6 +517,22 @@ def _index_has(query: str) -> bool:
 
     condition = _search_condition(query, "text")
     return condition is not None and ProductSearchIndex.objects.filter(condition).exists()
+
+
+def _words_start(query: str, field: str) -> Q:
+    """Каждое слово запроса стоит в начале какого-то слова текста (не кусок внутри слова)."""
+    condition = Q()
+    for word in _required_words(search_words(query)[1]):
+        condition &= _word_start(field, stem(word))
+    return condition
+
+
+def _index_has_word_starts(query: str) -> bool:
+    """Для догадок (раскладка, чтение латиницей): совпадение куском внутри слова — не находка.
+    «халат» читался как «halat» и находил ингаляторы (inHALATion), прод 23.11.2026."""
+    from .models_search import ProductSearchIndex
+
+    return bool(search_words(query)[1]) and ProductSearchIndex.objects.filter(_words_start(query, "text")).exists()
 
 
 def _words_found(words: list[str]) -> list[bool]:
@@ -660,7 +686,7 @@ def search_plan(search: str, *, typing: bool = True) -> Optional[SearchPlan]:
     if not query or _index_has(query):
         return SearchPlan(query)
     for mode, text in _alternatives(search, query):
-        if text and text != query and _index_has(text):
+        if text and text != query and _index_has_word_starts(text):
             return SearchPlan(text, mode)
     corrected = _typo_correction(query, typing=typing)
     if corrected and _index_has(corrected):
@@ -692,9 +718,14 @@ def _line_equals(field: str, value: str) -> Q:
 
 
 def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optional[SearchPlan] = None):
-    """Точное название или бренд → название начинается с запроса → запрос с начала
-    слова в названии → все слова запроса есть в названии → остальное (найдено по веществу,
-    производителю, разделу); внутри — короче название, в наличии, новее.
+    """Точное название или бренд → название начинается с запроса целым словом → запрос целиком
+    стоит в названии → все слова запроса стоят в названии целыми словами → название начинается с запроса (слово продолжается) →
+    запрос с начала слова в названии → все слова запроса есть в названии → слова стоят в начале
+    слов текста (вещество, производитель, раздел) → найдено куском внутри слова; внутри — короче
+    название, в наличии, новее.
+
+    Целое слово выше продолжения и куска: по «ковер» первым шёл COVERAM (читается «коверам»),
+    по «dress» — комод Dresser, по «коран» в выдаче стоял NICORANDIL (прод 23.11.2026).
 
     Ключи сортировки считаются для всех совпадений, поэтому только дешёвые: LIKE и
     длина названия. Регулярки и ``similarity`` на 8,8 тыс. совпадений стоили ≈ 0,8 с
@@ -708,18 +739,52 @@ def order_by_relevance(queryset, search: str, *, prefix: str = "", plan: Optiona
         return queryset.order_by("-created_at", "-id")
     names = f"{prefix}search_index__name"
     brand = f"{prefix}search_index__brand"
+    # Названия одной строкой с пробелами по краям: целое слово — это « слово ». Только LIKE.
+    padded = "search_names"
+    whole_words = Q()
+    for word in _required_words(search_words(query)[1]):
+        whole_word = Q()
+        # Буква витамина («с», «д3») — вместе с написанием в другом алфавите.
+        for form in dict.fromkeys(filter(None, (word, stem(word), letter_twin(word)))):
+            whole_word |= Q(**{f"{padded}__contains": f" {form} "})
+        whole_words &= whole_word
+    text = f"{prefix}search_index__text"
     tier = Case(
         When(_line_equals(names, query) | _line_equals(brand, query), then=Value(0)),
-        When(Q(**{f"{names}__startswith": query}) | Q(**{f"{names}__contains": f"\n{query}"}), then=Value(1)),
-        When(**{f"{names}__contains": f" {query}"}, then=Value(2)),
+        When(Q(**{f"{names}__startswith": f"{query} "}) | Q(**{f"{names}__contains": f"\n{query} "}), then=Value(1)),
+        # Запрос целиком стоит в названии («ибупрофен 400» — раньше геля «ибупрофен 5%»).
+        When(**{f"{padded}__contains": f" {query} "}, then=Value(2)),
+        When(whole_words, then=Value(3)),
+        When(Q(**{f"{names}__startswith": query}) | Q(**{f"{names}__contains": f"\n{query}"}), then=Value(4)),
+        When(**{f"{names}__contains": f" {query}"}, then=Value(4)),
         # «витамин д3»: в названиях «Витамин D3», запрос строкой не совпадает — без этой ступени
         # первыми шли короткие названия, найденные по составу (сироп POLIVIT).
-        When(_search_condition(query, names), then=Value(3)),
-        default=Value(4),
+        When(_search_condition(query, names), then=Value(5)),
+        When(_words_start(query, text), then=Value(6)),
+        default=Value(7),
         output_field=IntegerField(),
     )
-    return queryset.annotate(search_tier=tier, search_name_length=Length("name")).order_by(
-        "search_tier", "search_name_length", "-is_available", "-created_at", "-id"
+    queryset = queryset.annotate(
+        search_names=Concat(
+            Value(" "), Replace(names, Value("\n"), Value(" "), output_field=TextField()), Value(" "),
+            output_field=TextField(),
+        )
+    )
+    # Назначение («от головной боли»): группы ATC в порядке словаря — сначала основная
+    # (N02B, парацетамол), потом остальные; иначе первыми шли короткие названия любой группы
+    # (три SULINDAC, прод 24.11.2026).
+    stems = [stem(word) for word in _required_words(search_words(query)[1])]
+    codes = [code for _, span_codes in _purpose_spans(stems).values() for code in span_codes]
+    purpose = Case(
+        *(
+            When(_word_start(text, code) & Q(**{_product_type_field(text): "medicines"}), then=Value(index))
+            for index, code in enumerate(codes)
+        ),
+        default=Value(len(codes)),
+        output_field=IntegerField(),
+    ) if codes else Value(0, output_field=IntegerField())
+    return queryset.annotate(search_tier=tier, search_purpose=purpose, search_name_length=Length("name")).order_by(
+        "search_tier", "search_purpose", "search_name_length", "-is_available", "-created_at", "-id"
     )
 
 
