@@ -435,3 +435,95 @@ def test_legacy_search_endpoint_excludes_service_rows_without_external_data_cond
     assert [row["id"] for row in response.data] == [public.pk]
     for sql in (q["sql"] for q in queries.captured_queries if "catalog_productsearchindex" in q["sql"]):
         assert '"catalog_product"."external_data" ?' not in sql
+
+
+def test_search_page_queries_are_counted(make_product):
+    """Учёт запросов: страница /search (search_source=page) пишет запрос, число найденного и то,
+    как он понят; подсказки в шапке и «Показать ещё» не пишут ничего."""
+    from apps.catalog.models_search import SearchQueryStat
+
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    page = {"view": "card", "include_facets": "false", "search_source": "page"}
+
+    for query in ("Парацитамол", "парацитамол", "шуба"):
+        assert APIClient().get(URL, {"search": query, **page}).status_code == 200
+    APIClient().get(URL, {"search": "парац", "view": "card", "page_size": 6})  # подсказка
+    APIClient().get(URL, {"search": "парацетамол", "page": 2, **page})  # «Показать ещё»
+
+    APIClient().get(URL, {"search": "парацетамол", "product_type": "books", **page})  # с фильтром
+
+    rows = {row.query: row for row in SearchQueryStat.objects.all()}
+    assert set(rows) == {"парацитамол", "шуба"}
+    typo = rows["парацитамол"]
+    assert (typo.searches, typo.results, typo.mode, typo.corrected_query) == (2, 1, "typo", "парацетамол")
+    assert (rows["шуба"].searches, rows["шуба"].results, rows["шуба"].corrected_query) == (1, 0, "")
+
+
+def test_search_stat_failure_does_not_break_search(make_product, monkeypatch):
+    from apps.catalog import search_stats
+
+    make_product("Парацетамол 500 мг")
+    _rebuild()
+    monkeypatch.setattr(search_stats.SearchQueryStat.objects, "filter", lambda **kwargs: 1 / 0)
+
+    response = APIClient().get(URL, {"search": "парацетамол", "search_source": "page", "view": "card"})
+    assert response.status_code == 200 and response.data["count"] == 1
+
+
+def test_search_queries_admin_list_and_not_found_filter(db, rf):
+    from django.contrib import admin
+    from django.contrib.auth import get_user_model
+
+    from apps.catalog.models_search import SearchQueryStat
+
+    SearchQueryStat.objects.create(query="шуба", searches=7, results=0)
+    SearchQueryStat.objects.create(query="мидокалм", searches=3, results=7)
+    SearchQueryStat.objects.create(query="парацитамол", searches=2, results=1, mode="typo", corrected_query="парацетамол")
+    admin_user = get_user_model().objects.create_superuser(
+        username="search-admin", email="search-admin@example.com", password="x" * 12
+    )
+    model_admin = admin.site._registry[SearchQueryStat]
+
+    def rows(params=""):
+        request = rf.get(f"/admin/catalog/searchquerystat/{params}")
+        request.user = admin_user
+        return list(model_admin.get_changelist_instance(request).get_queryset(request))
+
+    everything = rows()
+    assert [row.query for row in everything] == ["шуба", "мидокалм", "парацитамол"]  # частые сверху
+    assert model_admin.understood(everything[2]) == "исправлена опечатка → «парацетамол»"
+    assert 'href="/search?query=' in model_admin.open_search(everything[0])
+    assert [row.query for row in rows("?found=none")] == ["шуба"]
+    assert [row.query for row in rows("?found=fixed")] == ["парацитамол"]
+
+
+def test_search_facets_types_brands_and_filters(make_product):
+    """Фильтры страницы /search: разделы и бренды найденного с количеством; после выбора
+    фильтра список разделов и брендов не схлопывается, а выдача сужается и сортируется."""
+    nike = Brand.objects.create(name="Nike", slug=f"nike-{uuid.uuid4().hex[:6]}")
+    puma = Brand.objects.create(name="Puma", slug=f"puma-{uuid.uuid4().hex[:6]}")
+    shoes = [
+        make_product("Run Sneaker", brand=nike, product_type="shoes"),
+        make_product("Run Sneaker Pro", brand=nike, product_type="shoes"),
+        make_product("Run Sneaker Lite", brand=puma, product_type="shoes"),
+    ]
+    Product.objects.filter(pk=shoes[0].pk).update(price=Decimal("300.00"))
+    Product.objects.filter(pk=shoes[1].pk).update(price=Decimal("100.00"), is_available=False)
+    Product.objects.filter(pk=shoes[2].pk).update(price=Decimal("200.00"))
+    shirt = make_product("Run Shirt", brand=puma, product_type="clothing")
+    _rebuild()
+    base = {"search": "run", "view": "card", "include_facets": "false", "search_facets": "1"}
+
+    data = APIClient().get(URL, base).data
+    assert data["count"] == 4
+    assert data["search_facets"]["types"] == [{"value": "shoes", "count": 3}, {"value": "clothing", "count": 1}]
+    assert [(row["name"], row["count"]) for row in data["search_facets"]["brands"]] == [("Nike", 2), ("Puma", 2)]
+
+    data = APIClient().get(URL, {**base, "product_type": "shoes", "brand_id": nike.pk, "ordering": "price_asc"}).data
+    assert [row["id"] for row in data["results"]] == [shoes[1].pk, shoes[0].pk]
+    assert len(data["search_facets"]["types"]) == 2 and len(data["search_facets"]["brands"]) == 2
+    data = APIClient().get(URL, {**base, "product_type": "shoes", "is_available": "true"}).data
+    assert {row["id"] for row in data["results"]} == {shoes[0].pk, shoes[2].pk}
+    assert "search_facets" not in APIClient().get(URL, {"search": "run", "view": "card"}).data  # подсказкам не нужны
+    assert shirt.pk in _ids({"search": "run"})

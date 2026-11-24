@@ -38,3 +38,36 @@ class ProductSearchIndex(models.Model):
 
     def __str__(self):
         return f"{self.product_id}: {self.text[:80]}"
+
+
+class SearchQueryStat(models.Model):
+    """Что искали на странице /search и сколько нашлось: одна строка на запрос и язык.
+
+    Без пользователя и адреса — только текст запроса. Пишет ``search_stats.record_search``;
+    подсказки в шапке (запрос на каждую букву) сюда не попадают.
+    """
+
+    MODE_TITLES = {
+        "words": "как написано",
+        "layout": "другая раскладка",
+        "translit": "латиница ↔ кириллица",
+        "typo": "исправлена опечатка",
+        "partial": "без лишнего слова",
+    }
+
+    query = models.CharField(_("Запрос"), max_length=120)
+    locale = models.CharField(_("Язык"), max_length=5, default="ru")
+    searches = models.PositiveIntegerField(_("Сколько раз искали"), default=0)
+    results = models.PositiveIntegerField(_("Найдено товаров"), default=0, help_text=_("При последнем поиске."))
+    mode = models.CharField(_("Как понят запрос"), max_length=10, blank=True, default="")
+    corrected_query = models.CharField(_("Искали по запросу"), max_length=120, blank=True, default="")
+    first_at = models.DateTimeField(_("Первый раз"), auto_now_add=True)
+    last_at = models.DateTimeField(_("Последний раз"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Поисковый запрос")
+        verbose_name_plural = _("Поисковые запросы")
+        constraints = [models.UniqueConstraint(fields=["query", "locale"], name="catalog_searchquerystat_query_locale")]
+
+    def __str__(self):
+        return self.query

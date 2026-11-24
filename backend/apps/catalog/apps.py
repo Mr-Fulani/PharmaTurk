@@ -14,4 +14,5 @@ class CatalogConfig(AppConfig):
         import apps.catalog.admin_vk  # noqa: F401  — маппинг категорий ВК
         import apps.catalog.admin_stock  # noqa: F401  — ночная сверка наличия
         import apps.catalog.admin_duplicates  # noqa: F401  — дубли FLO ↔ SuperStep
+        import apps.catalog.admin_search  # noqa: F401  — учёт поисковых запросов
 
