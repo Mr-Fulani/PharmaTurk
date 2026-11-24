@@ -5340,6 +5340,25 @@ class AutoPartProductViewSet(_SimpleDomainViewSet):
             context['active_variant_slug'] = active_slug
         return context
 
+    @action(detail=True, methods=['get'], url_path='fitments')
+    def fitments(self, request, slug=None):
+        """Строки применимости одной марки: карточка подгружает их, когда покупатель открывает марку.
+
+        ``?make=<slug марки>`` обязателен: у детали бывает до ~900 строк на 26 марок, все сразу не нужны.
+        """
+        part = self.get_object()
+        make = str(request.query_params.get('make') or '').strip().lower()
+        if not make:
+            return Response({'detail': 'Укажите марку: ?make=<slug>'}, status=status.HTTP_400_BAD_REQUEST)
+        rows = part.fitments.filter(make_slug=make).order_by(
+            'model', 'generation', 'year_from', 'month_from', 'engine', 'id',
+        ).values(
+            'model', 'generation', 'engine', 'power_kw', 'power_hp',
+            'year_from', 'month_from', 'year_to', 'month_to', 'note',
+        )
+        page = self.paginate_queryset(rows)
+        return self.get_paginated_response(list(page))
+
     def _apply_domain_filters(self, queryset):
         car_brand = self.request.query_params.get('car_brand')
         if car_brand:

@@ -1765,5 +1765,16 @@
   "section_nav_perfumery": "Парфюмерия",
   "section_nav_accessories": "Аксессуары",
   "section_nav_all": "Все разделы",
-  "header_catalog": "Каталог"
+  "header_catalog": "Каталог",
+  "auto_part_numbers_title": "Номера детали",
+  "auto_part_number_label": "Артикул производителя",
+  "auto_part_oem_title": "Оригинальные номера (OEM)",
+  "auto_part_cross_title": "Номера-аналоги",
+  "auto_part_fitment_title": "Подходит к автомобилям",
+  "auto_part_fitment_hint": "Вариантов кузова и двигателя: {{count}}. Перед заказом сверьте деталь по OEM-номеру или по VIN автомобиля.",
+  "auto_part_fitment_retry": "Не удалось загрузить список. Повторить",
+  "auto_part_fitment_body": "Модель и кузов",
+  "auto_part_fitment_engine": "Двигатель",
+  "auto_part_fitment_power": "Мощность",
+  "auto_part_fitment_years": "Годы выпуска"
 }

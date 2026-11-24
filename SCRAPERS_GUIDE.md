@@ -1317,9 +1317,11 @@ aloparca.com и сервер фото `googlecdn.aloparca.com` отвечают 
 из вида детали, бренда, артикула, OEM и применимости, модель не вызывается
 (`apps/ai/services/rules/auto_parts.py`, [docs/AUTO_PARTS_AI_DESIGN.md](docs/AUTO_PARTS_AI_DESIGN.md)).
 
+**На карточке сайта** — блоки «Номера детали» и «Подходит к автомобилям» (строки марки подгружаются
+по раскрытию; `docs/AUTO_PARTS_AI_DESIGN.md`).
+
 **Не сделано (следующие шаги):** проверка наличия при открытии карточки и ночная сверка
-(`check_offer`), блоки «Подходит к автомобилям» и «OEM-номера» на карточке сайта, фильтр по
-автомобилю, поиск по номеру детали.
+(`check_offer`), фильтр по автомобилю, поиск по номеру детали.
 
 Тесты: `backend/apps/scrapers/test_aloparca_parser.py` (фрагменты настоящих страниц —
 `test_fixtures/aloparca/`), `backend/apps/catalog/tests/test_auto_part_numbers.py`.
