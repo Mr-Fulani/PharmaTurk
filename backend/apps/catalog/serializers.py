@@ -7291,7 +7291,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
     # Столько номеров отдаётся в карточку (у деталей пилота — до 47).
     OEM_NUMBERS_LIMIT = 100
 
-    def get_oem_numbers(self, obj):
+    def get_oem_numbers(self, obj) -> list[dict]:
         """OEM-номера и аналоги для блока карточки: номер, вид, чей номер."""
         return [
             {"number": number, "kind": kind, "maker": maker}
@@ -7300,7 +7300,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             )[: self.OEM_NUMBERS_LIMIT]
         ]
 
-    def get_fitment_summary(self, obj):
+    def get_fitment_summary(self, obj) -> dict:
         """Сводка применимости: марки с моделями и числом строк — один запрос с группировкой.
 
         Сами строки (кузов, двигатель, годы — до ~900 на деталь) карточка подгружает по марке
