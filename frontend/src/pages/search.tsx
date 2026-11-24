@@ -1,16 +1,21 @@
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getSingleFlight } from '../lib/api'
 import {
   appendSearchPage,
+  hasSearchFilters,
   nextSearchSource,
+  readSearchFacets,
+  readSearchFilters,
   readSearchInfo,
   readSearchPage,
+  searchPageQuery,
   searchProductParams,
   searchServiceParams,
 } from '../lib/searchResults'
+import SearchFilters, { type SearchFiltersValue } from '../components/SearchFilters'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
@@ -40,8 +45,18 @@ export default function SearchPage() {
   const [searchInfo, setSearchInfo] = useState<{ mode: string; query: string } | null>(null)
   // Запрос, к которому относятся показанные результаты: ответ «Показать ещё»
   // по прежнему запросу не должен попасть в список нового.
-  const queryRef = useRef(q)
-  queryRef.current = q
+  // Фильтры и сортировка живут в адресе (?type=&brand=&available=&sort=): ссылкой можно поделиться.
+  const { type: filterType, brand: filterBrand, available: filterAvailable, sort: filterSort } = readSearchFilters(router.query)
+  const filters: SearchFiltersValue = useMemo(
+    () => ({ type: filterType, brand: filterBrand, available: filterAvailable, sort: filterSort }),
+    [filterType, filterBrand, filterAvailable, filterSort],
+  )
+  // Услуги не делятся на разделы и бренды и не сортируются по цене вместе с товарами.
+  const withServices = !hasSearchFilters(filters) && filters.sort === 'relevance'
+  const [facets, setFacets] = useState<ReturnType<typeof readSearchFacets>>({ types: [], brands: [] })
+  const requestKey = `${q}|${filterType}|${filterBrand}|${filterAvailable}|${filterSort}`
+  const queryRef = useRef(requestKey)
+  queryRef.current = requestKey
   // С запросом в URL страница сразу (и в SSR) в состоянии загрузки: иначе первым
   // кадром мелькает «Товары не найдены».
   const [loading, setLoading] = useState(Boolean(q))
@@ -56,11 +71,12 @@ export default function SearchPage() {
     if (!q) {
       setProducts(EMPTY_SOURCE)
       setServices(EMPTY_SOURCE)
+      setFacets({ types: [], brands: [] })
       setError(null)
       setLoading(false)
       return
     }
-    gtmSearch(q)
+    if (!hasSearchFilters(filters) && filters.sort === 'relevance') gtmSearch(q)
     let cancelled = false
     const run = async () => {
       setLoading(true)
@@ -68,8 +84,10 @@ export default function SearchPage() {
       try {
         // A failure in one catalog must not hide valid results from the other.
         const [productsResult, servicesResult] = await Promise.allSettled([
-          getSingleFlight('/catalog/products', { params: searchProductParams(q) }),
-          getSingleFlight('/catalog/services', { params: searchServiceParams(q) })
+          getSingleFlight('/catalog/products', { params: searchProductParams(q, 1, filters) }),
+          withServices
+            ? getSingleFlight('/catalog/services', { params: searchServiceParams(q) })
+            : Promise.resolve({ data: { count: 0, next: null, results: [] } }),
         ])
 
         if (cancelled) return
@@ -81,6 +99,7 @@ export default function SearchPage() {
 
         setProducts({ items: productPage.results, count: productPage.count, page: 1, hasMore: productPage.hasMore })
         setSearchInfo(readSearchInfo(productsRes?.data))
+        if (productsRes) setFacets(readSearchFacets(productsRes.data))
         setServices({ items: markServices(servicePage.results), count: servicePage.count, page: 1, hasMore: servicePage.hasMore })
         if (!productsRes && !servicesRes) {
           setError(t('search_error', 'Не удалось выполнить поиск. Попробуйте ещё раз.'))
@@ -95,21 +114,22 @@ export default function SearchPage() {
     return () => {
       cancelled = true
     }
-  }, [q, router.isReady, t])
+  }, [q, filters, withServices, router.isReady, t])
 
   const source = nextSearchSource(products, services)
 
   const loadMore = async () => {
     if (!source) return
     const requestQuery = q
+    const requestedKey = requestKey
     const current = source === 'products' ? products : services
     const nextPage = current.page + 1
     setLoadingMore(true)
     try {
       const res = source === 'products'
-        ? await getSingleFlight('/catalog/products', { params: searchProductParams(requestQuery, nextPage) })
+        ? await getSingleFlight('/catalog/products', { params: searchProductParams(requestQuery, nextPage, filters) })
         : await getSingleFlight('/catalog/services', { params: searchServiceParams(requestQuery, nextPage) })
-      if (queryRef.current !== requestQuery) return
+      if (queryRef.current !== requestedKey) return
       const page = readSearchPage(res.data)
       const update = (state: SourceState): SourceState => ({
         items: appendSearchPage(state.items, source === 'services' ? markServices(page.results) : page.results),
@@ -121,16 +141,20 @@ export default function SearchPage() {
       else setServices(update)
       setMoreError(null)
     } catch {
-      if (queryRef.current === requestQuery) {
+      if (queryRef.current === requestedKey) {
         setMoreError(t('search_partial_error', 'Часть результатов временно недоступна.'))
       }
     } finally {
-      if (queryRef.current === requestQuery) setLoadingMore(false)
+      if (queryRef.current === requestedKey) setLoadingMore(false)
     }
   }
 
   const items = [...products.items, ...services.items]
   const total = products.count + services.count
+  const filtered = hasSearchFilters(filters)
+  const applyFilters = (next: SearchFiltersValue) => {
+    void router.replace({ pathname: '/search', query: searchPageQuery(q, next) }, undefined, { shallow: true, scroll: false })
+  }
 
   return (
     <>
@@ -162,11 +186,22 @@ export default function SearchPage() {
         {/* С запросом блок не ниже экрана: пока идёт поиск и когда ничего не нашлось,
             подвал остаётся за краем экрана и не прыгает (CLS) */}
         <section id="search-results" className={`scroll-mt-24${q ? ' min-h-screen' : ''}`}>
+          {q && (facets.types.length > 0 || filtered) ? <SearchFilters facets={facets} value={filters} onChange={applyFilters} /> : null}
           {error ? <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">{error}</div> : null}
           {loading ? <div className="mt-6">{t('search_loading', 'Загрузка…')}</div> : items.length === 0 ? (
             <div className="mt-6">
-              <div className="text-gray-600 dark:text-gray-400">{t('products_not_found', 'Товары не найдены')}</div>
-              {q ? (
+              <div className="text-gray-600 dark:text-gray-400">
+                {filtered ? t('search_filters_empty', 'С такими фильтрами ничего не нашлось.') : t('products_not_found', 'Товары не найдены')}
+              </div>
+              {filtered ? (
+                <button
+                  type="button"
+                  onClick={() => applyFilters({ type: '', brand: null, available: false, sort: filters.sort })}
+                  className="mt-4 min-h-[44px] rounded-lg border border-[var(--border)] px-6 py-2 text-sm font-medium text-[var(--text-strong)] hover:border-[var(--accent)]"
+                >
+                  {t('search_filters_reset', 'Сбросить фильтры')}
+                </button>
+              ) : q ? (
                 <div className="mt-6">
                   <SourcingRequestForm placement="search" initialComment={q} />
                 </div>

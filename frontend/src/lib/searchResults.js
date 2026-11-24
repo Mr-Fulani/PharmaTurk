@@ -3,13 +3,62 @@
 
 export const SEARCH_PAGE_SIZE = 24
 
-export function searchProductParams(query, page = 1) {
+export const SEARCH_SORTS = ['relevance', 'price_asc', 'price_desc', 'newest']
+
+// Фильтры страницы поиска из адреса: ?type=shoes&brand=12&available=1&sort=price_asc.
+// Неизвестная сортировка и нечисловой бренд отбрасываются.
+export function readSearchFilters(query) {
+  const one = (value) => (Array.isArray(value) ? value[0] : value) || ''
+  const brand = Number.parseInt(one(query?.brand), 10)
+  const sort = one(query?.sort)
+  return {
+    type: one(query?.type),
+    brand: Number.isFinite(brand) && brand > 0 ? brand : null,
+    available: one(query?.available) === '1',
+    sort: SEARCH_SORTS.includes(sort) && sort !== 'relevance' ? sort : 'relevance',
+  }
+}
+
+export function hasSearchFilters(filters) {
+  return Boolean(filters && (filters.type || filters.brand || filters.available))
+}
+
+// Адрес страницы поиска с фильтрами; пустые значения в адрес не попадают.
+export function searchPageQuery(query, filters) {
+  return {
+    query,
+    ...(filters.type ? { type: filters.type } : {}),
+    ...(filters.brand ? { brand: String(filters.brand) } : {}),
+    ...(filters.available ? { available: '1' } : {}),
+    ...(filters.sort && filters.sort !== 'relevance' ? { sort: filters.sort } : {}),
+  }
+}
+
+export function searchProductParams(query, page = 1, filters = null) {
   return {
     search: query,
     page_size: SEARCH_PAGE_SIZE,
     view: 'card',
     include_facets: false,
-    ...(page > 1 ? { page } : {}),
+    ...(filters?.type ? { product_type: filters.type } : {}),
+    ...(filters?.brand ? { brand_id: filters.brand } : {}),
+    ...(filters?.available ? { is_available: true } : {}),
+    ...(filters?.sort && filters.sort !== 'relevance' ? { ordering: filters.sort } : {}),
+    // Запрос отправлен целиком, а не набирается: бэкенд не дописывает последнее слово и
+    // пишет первую страницу без фильтров в учёт запросов. Подсказки в шапке параметр не шлют.
+    search_source: 'page',
+    // Разделы и бренды найденного нужны один раз, с первой страницей.
+    ...(page > 1 ? { page } : { search_facets: 1 }),
+  }
+}
+
+// Разделы и бренды найденного (бэкенд: search_facets) → {types, brands}; мусор отбрасывается.
+export function readSearchFacets(data) {
+  const facets = data && !Array.isArray(data) ? data.search_facets : null
+  const list = (value) => (Array.isArray(value) ? value : [])
+  return {
+    types: list(facets?.types).filter((row) => row && typeof row.value === 'string' && row.count > 0),
+    brands: list(facets?.brands).filter((row) => row && Number.isFinite(row.id) && row.name && row.count > 0),
   }
 }
 

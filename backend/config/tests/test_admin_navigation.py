@@ -87,6 +87,16 @@ def test_markup_scale_sits_in_prices_group():
     assert _models_by_group(groups) == {"Цены и валюты": ["MarkupScale", "MarginSettings"]}
 
 
+def test_search_queries_sit_in_sources_group():
+    site = MudarobaAdminSite(name="test_admin")
+    source_apps = [_app("catalog", "Каталог", _model("SearchQueryStat"))]
+
+    with patch.object(AdminSite, "get_app_list", return_value=source_apps):
+        groups = site.get_app_list(request=object())
+
+    assert _models_by_group(groups) == {"Источники и проверки": ["SearchQueryStat"]}
+
+
 def test_app_index_keeps_django_native_grouping():
     source_apps = [_app("catalog", "Каталог", _model("ProductImage"))]
     site = MudarobaAdminSite(name="test_admin")

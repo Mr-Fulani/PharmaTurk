@@ -368,6 +368,12 @@ def test_two_edits_only_in_long_words_and_unfinished_word(make_product):
     _rebuild()
     assert _ids({"search": "пальто"}) == []
     assert _ids({"search": "нурафе 200"}) == []
+    # Отправленный запрос (страница результатов) не дописывается: «пальто» → «пальмовое».
+    make_product("Красное пальмовое масло")
+    _rebuild()
+    assert _ids({"search": "пальто", "search_source": "page"}) == []
+    assert _ids({"search": "нурафе", "search_source": "page"}) == []
+    assert _ids({"search": "нурафе"}) == [nurofen.pk]
     assert closest_word("нураф", ["нурофен 400"], unfinished=True) == "нурофен"
     assert closest_word("нураф", ["нурофен 400"]) == ""
 

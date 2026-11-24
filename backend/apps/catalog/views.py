@@ -1922,8 +1922,48 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         plan = request_search_plan(request, search) if search else None
         if plan is not None and plan.corrected and isinstance(response.data, dict) and response.data.get('count'):
             response.data['search_info'] = {'mode': plan.mode, 'query': plan.query}
+        # Фильтры страницы /search: разделы и бренды найденного (docs/PRODUCT_SEARCH.md).
+        if search and request.query_params.get('search_facets') == '1' and isinstance(response.data, dict):
+            response.data['search_facets'] = self._search_facets(search, plan)
+        # Учёт запросов: только первая страница /search (search_source=page), не подсказки в шапке.
+        if (
+            search
+            and request.query_params.get('search_source') == 'page'
+            and request.query_params.get('page', '1') == '1'
+            # С фильтром в учёт попало бы суженное число найденного.
+            and not any(request.query_params.get(name) for name in ('product_type', 'brand_id', 'is_available'))
+            and isinstance(response.data, dict)
+        ):
+            from .search_stats import record_search
+
+            locale = (getattr(request, 'LANGUAGE_CODE', '') or 'ru')[:2]
+            record_search(search, plan, response.data.get('count') or 0, locale)
         return response
     
+    # Брендов в списке фильтра — самые частые; остальные находятся уточнением запроса.
+    SEARCH_FACET_BRANDS = 30
+
+    def _search_facets(self, search, plan):
+        """Разделы и бренды всего найденного по запросу — без выбранных фильтров, чтобы список
+        не схлопывался после выбора. Два GROUP BY по найденным строкам, external_data не читается."""
+        found = filter_by_search(
+            Product.objects.filter(is_active=True).exclude(product_type='jewelry').exclude(
+                id__in=Product.objects.filter(non_public_shadow_product_q()).values('id')
+            ),
+            search,
+            plan=plan,
+        )
+        types = found.order_by().values('product_type').annotate(count=Count('id')).order_by('-count', 'product_type')
+        brands = (
+            found.exclude(brand__isnull=True).exclude(brand__slug='other').order_by()
+            .values('brand_id', 'brand__name').annotate(count=Count('id'))
+            .order_by('-count', 'brand__name')[:self.SEARCH_FACET_BRANDS]
+        )
+        return {
+            'types': [{'value': row['product_type'], 'count': row['count']} for row in types if row['product_type']],
+            'brands': [{'id': row['brand_id'], 'name': row['brand__name'], 'count': row['count']} for row in brands],
+        }
+
     @extend_schema(
         summary="Получить товар по slug",
         description="Возвращает детальную информацию о товаре"
