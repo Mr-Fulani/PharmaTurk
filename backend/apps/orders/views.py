@@ -1771,7 +1771,8 @@ class OrderViewSet(viewsets.ViewSet):
             OpenApiExample(
                 'Запрос',
                 value={
-                    "contact_name": "Иван Иванов",
+                    "contact_name": "Иван",
+                    "contact_last_name": "Иванов",
                     "contact_phone": "+79990000000",
                     "contact_email": "ivan@example.com",
                     "shipping_address_text": "Москва, ул. Пушкина д.1",
