@@ -71,3 +71,39 @@ class SearchQueryStat(models.Model):
 
     def __str__(self):
         return self.query
+
+
+class SearchDemand(models.Model):
+    """Спрос из поисковиков (SEO-ядро): сколько раз в месяц ищут название товара.
+
+    Поднимает товары в порядке «Популярные» — ``services/catalog_sort_rank.py``,
+    устройство в docs/CATALOG_SEARCH_DEMAND.md. Список товаров эту таблицу не читает:
+    спрос учитывается при ночном пересчёте ``sort_rank``.
+    """
+
+    PRODUCT_TYPES = [("medicines", _("Лекарства")), ("supplements", _("БАДы"))]
+
+    product_type = models.CharField(_("Раздел"), max_length=20, choices=PRODUCT_TYPES, default="medicines")
+    name_prefix = models.CharField(
+        _("Начало названия товара"),
+        max_length=120,
+        help_text=_(
+            "Латиницей, как в начале названия карточки: MAJEZIK, TYLOLHOT, CLEOCIN T. "
+            "Регистр, пробелы и дефисы не важны: TYLOLHOT подходит и к «TYLOL HOT»."
+        ),
+    )
+    frequency = models.PositiveIntegerField(
+        _("Запросов в месяц"), help_text=_("Из Вордстата. Чем больше число, тем выше товар в списке.")
+    )
+    note = models.CharField(_("Заметка"), max_length=200, blank=True, default="")
+    updated_at = models.DateTimeField(_("Изменено"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Спрос из поиска")
+        verbose_name_plural = _("Спрос из поиска")
+        constraints = [
+            models.UniqueConstraint(fields=["product_type", "name_prefix"], name="catalog_searchdemand_type_prefix")
+        ]
+
+    def __str__(self):
+        return f"{self.name_prefix}: {self.frequency}"

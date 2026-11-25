@@ -5,6 +5,9 @@
 частичного индекса (миграции 0212, 0214), без JOIN-ов и агрегатов в запросе.
 Разряды по убыванию важности:
 
+    demand * 4_000_000          спрос из поисковиков (SearchDemand, 0..500), см.
+                                docs/CATALOG_SEARCH_DEMAND.md; решение владельца 25.11.2026:
+                                товар со спросом стоит выше остальных даже без цены и наличия
     tier * 1_000_000            есть цена (+2), в наличии (+1): без цены — в конце
     is_featured * 100_000       ручной буст менеджера
     min(interest, 9_999) * 10   спрос: заявки, корзины, избранное, проверки цены
@@ -13,11 +16,17 @@
 При равном ранге порядок задаёт id (новые выше), см. _ORDERING_MAP вьюсетов.
 """
 
+import re
 from collections import Counter
 
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Sum
 
+# Всё, что ниже спроса, занимает меньше 4 млн; 500 ступеней спроса помещаются в
+# PositiveIntegerField (до 2 147 483 647), колонку и индекс менять не нужно.
+DEMAND_WEIGHT = 4_000_000
+DEMAND_LEVELS = 500
+DEMAND_PREFIX_WORDS = 3
 TIER_WEIGHT = 1_000_000
 FEATURED_WEIGHT = 100_000
 INTEREST_CAP = 9_999
@@ -43,15 +52,50 @@ def compute_sort_rank(
     interest: int,
     has_image: bool,
     has_ru_description: bool,
+    demand: int = 0,
 ) -> int:
     tier = (2 if has_price else 0) + (1 if is_available else 0)
     quality = (2 if has_image else 0) + (1 if has_ru_description else 0)
     return (
-        tier * TIER_WEIGHT
+        min(demand, DEMAND_LEVELS) * DEMAND_WEIGHT
+        + tier * TIER_WEIGHT
         + (FEATURED_WEIGHT if is_featured else 0)
         + min(interest, INTEREST_CAP) * INTEREST_WEIGHT
         + quality
     )
+
+
+def _name_words(name: str) -> list:
+    return re.findall(r"[^\W_]+", (name or "").upper())
+
+
+def demand_levels(product_type: str) -> dict:
+    """Начало названия без пробелов и дефисов -> ступень спроса (1..DEMAND_LEVELS).
+
+    Ступень — место частоты среди разных частот раздела: чем больше запросов, тем
+    выше. Пока разных частот не больше DEMAND_LEVELS, порядок строго по частоте.
+    """
+    from apps.catalog.models_search import SearchDemand
+
+    best = {}
+    for prefix, frequency in SearchDemand.objects.filter(
+        product_type=product_type, frequency__gt=0
+    ).values_list("name_prefix", "frequency"):
+        key = "".join(_name_words(prefix))
+        if key:
+            best[key] = max(frequency, best.get(key, 0))
+    frequencies = sorted(set(best.values()))
+    scale = max(len(frequencies), DEMAND_LEVELS)
+    place = {frequency: index for index, frequency in enumerate(frequencies, start=1)}
+    return {key: -(-place[frequency] * DEMAND_LEVELS // scale) for key, frequency in best.items()}
+
+
+def demand_for_name(name: str, levels: dict) -> int:
+    """Ступень спроса товара: совпадение первых 1–3 слов названия с ``SearchDemand``."""
+    if not levels:
+        return 0
+    words = _name_words(name)[:DEMAND_PREFIX_WORDS]
+    return max((levels.get("".join(words[:count]), 0) for count in range(1, len(words) + 1)), default=0)
 
 
 def _interest_by_base_product(product_type: str) -> Counter:
@@ -92,12 +136,13 @@ def _favorite_counts(model) -> dict:
     )
 
 
-def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
-    """Пересчитывает sort_rank активных товаров модели; возвращает число изменённых."""
+def changed_sort_ranks(model, batch_size: int = 1000) -> list:
+    """Активные товары модели, у которых ранг изменится (новый ранг уже в ``sort_rank``, без записи)."""
     translation_model = model._meta.get_field("translations").related_model
 
     base_interest = _interest_by_base_product(model._domain_product_type)
     domain_favorites = _favorite_counts(model)
+    levels = demand_levels(model._domain_product_type)
     with_gallery = set(
         model.objects.filter(gallery_images__isnull=False).values_list("id", flat=True)
     )
@@ -112,7 +157,7 @@ def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
 
     # only(): external_data весит мегабайты на строку — не читаем его.
     fields = [
-        "id", "price", "is_available", "is_featured", "main_image",
+        "id", "name", "price", "is_available", "is_featured", "main_image",
         "main_image_file", "base_product_id", "sort_rank",
     ]
     products = model.objects.filter(is_active=True).only(*fields)
@@ -134,11 +179,17 @@ def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
                 or product.id in with_base_images
             ),
             has_ru_description=product.id in with_ru_description,
+            demand=demand_for_name(product.name, levels),
         )
         if rank != product.sort_rank:
             product.sort_rank = rank
             changed.append(product)
+    return changed
 
+
+def recompute_sort_ranks(model, batch_size: int = 1000) -> int:
+    """Пересчитывает sort_rank активных товаров модели; возвращает число изменённых."""
+    changed = changed_sort_ranks(model, batch_size)
     # bulk_update не вызывает save(): ни shadow-sync, ни updated_at не трогаем.
     model.objects.bulk_update(changed, ["sort_rank"], batch_size=batch_size)
     return len(changed)
