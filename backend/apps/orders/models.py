@@ -724,6 +724,8 @@ class OrderProcessingEvent(models.Model):
     actor = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+", verbose_name=_("Кто изменил"),
     )
+    # Кто нажал кнопку под уведомлением в Telegram-чате заявок (имя и ник); пусто у правок из админки
+    actor_label = models.CharField(_("Кто изменил (Telegram)"), max_length=150, blank=True, default="")
     old_status = models.CharField(_("Было"), max_length=16, choices=Order.ProcessingStatus.choices)
     new_status = models.CharField(_("Стало"), max_length=16, choices=Order.ProcessingStatus.choices)
     old_reason = models.CharField(

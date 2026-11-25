@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 import socket
@@ -806,6 +807,7 @@ def notify_new_order_telegram(
         document: bytes | None = None,
         filename: str = "receipt.pdf",
         parse_mode: str = "Markdown",
+        reply_markup: dict | None = None,
     ):
         if not bot_token:
             logger.error("TELEGRAM_BOT_TOKEN is not set!")
@@ -816,6 +818,8 @@ def notify_new_order_telegram(
         if document:
             files = {"document": (filename, document, "application/pdf")}
             data = {"chat_id": chat_id, "caption": text, "parse_mode": parse_mode}
+            if reply_markup:
+                data["reply_markup"] = json.dumps(reply_markup)
             resp = _post_telegram(bot_token, "sendDocument", data=data, files=files, timeout=20)
         else:
             # Без предпросмотра: у ссылки в админку им стала бы страница входа
@@ -825,8 +829,13 @@ def notify_new_order_telegram(
                 "parse_mode": parse_mode,
                 "disable_web_page_preview": True,
             }
+            if reply_markup:
+                json_data["reply_markup"] = reply_markup
             resp = _post_telegram(bot_token, "sendMessage", json=json_data, timeout=10)
 
+        if resp.status_code == 400 and reply_markup:
+            # Кнопки не должны стоить уведомления: если Telegram их не принял, шлём без них
+            return _send_tg(chat_id, text, document=document, filename=filename, parse_mode=parse_mode)
         if not resp.ok:
             logger.warning(
                 "Telegram notification failed for order %s: HTTP %s",
@@ -913,9 +922,16 @@ def notify_new_order_telegram(
             except Exception:
                 logger.warning("order_telegram_items_failed", exc_info=True)
         admin_steps = _tg_delivery_steps(admin_text, pdf_bytes, f"🧾 Чек к заказу <code>{h(order.number)}</code>")
+        from .telegram_buttons import order_keyboard
+
+        # Кнопки обработки — под последним сообщением; на повторе шаг и кнопки те же
+        admin_keyboard = order_keyboard(order, item_names=item_names)
         try:
             for step_text, step_document in admin_steps[admin_steps_sent:]:
-                _send_tg(admin_chat_id, step_text, document=step_document, filename=filename, parse_mode="HTML")
+                _send_tg(
+                    admin_chat_id, step_text, document=step_document, filename=filename, parse_mode="HTML",
+                    reply_markup=admin_keyboard if admin_steps_sent == len(admin_steps) - 1 else None,
+                )
                 admin_steps_sent += 1
         except TelegramTemporaryError as exc:
             logger.warning("Telegram send error for order %s: %s", order.number, exc)
@@ -1036,29 +1052,41 @@ def notify_sourcing_request_telegram(self, request_id: int, steps_sent: int = 0)
                 "Sourcing request %s: cannot read photo for Telegram: %s",
                 req.pk, type(exc).__name__,
             )
+
+    def _send_step(step_text, step_photo, keyboard):
+        if step_photo:
+            data = {"chat_id": chat_id, "caption": step_text, "parse_mode": "HTML"}
+            if keyboard:
+                data["reply_markup"] = json.dumps(keyboard)
+            resp = _post_telegram(
+                bot_token, "sendPhoto", data=data, files={"photo": ("photo.jpg", step_photo, "image/jpeg")}, timeout=20,
+            )
+        else:
+            payload = {
+                "chat_id": chat_id,
+                "text": step_text,
+                "parse_mode": "HTML",
+                # Предпросмотр — только у ссылки покупателя, не у страницы входа в админку
+                "disable_web_page_preview": not req.source_url,
+            }
+            if keyboard:
+                payload["reply_markup"] = keyboard
+            resp = _post_telegram(bot_token, "sendMessage", json=payload, timeout=15)
+        if resp.status_code == 400 and keyboard:
+            # Кнопки не должны стоить уведомления: если Telegram их не принял, шлём без них
+            return _send_step(step_text, step_photo, None)
+        return resp
+
+    # Кнопки обработки — под последним сообщением; у старых заявок без пары в «Заказах» их нет
+    keyboard = None
+    if order:
+        from .telegram_buttons import order_keyboard
+
+        keyboard = order_keyboard(order)
+    steps = _tg_delivery_steps(text, photo, f"Фото к заявке <code>{h(number)}</code>")
     try:
-        for step_text, step_photo in _tg_delivery_steps(text, photo, f"Фото к заявке <code>{h(number)}</code>")[steps_sent:]:
-            if step_photo:
-                resp = _post_telegram(
-                    bot_token,
-                    "sendPhoto",
-                    data={"chat_id": chat_id, "caption": step_text, "parse_mode": "HTML"},
-                    files={"photo": ("photo.jpg", step_photo, "image/jpeg")},
-                    timeout=20,
-                )
-            else:
-                resp = _post_telegram(
-                    bot_token,
-                    "sendMessage",
-                    json={
-                        "chat_id": chat_id,
-                        "text": step_text,
-                        "parse_mode": "HTML",
-                        # Предпросмотр — только у ссылки покупателя, не у страницы входа в админку
-                        "disable_web_page_preview": not req.source_url,
-                    },
-                    timeout=15,
-                )
+        for step_text, step_photo in steps[steps_sent:]:
+            resp = _send_step(step_text, step_photo, keyboard if steps_sent == len(steps) - 1 else None)
             if not resp.ok:
                 logger.warning("Telegram sourcing notification failed for %s: HTTP %s", req.pk, resp.status_code)
             steps_sent += 1

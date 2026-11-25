@@ -887,7 +887,8 @@ class OrderAdmin(admin.ModelAdmin):
             if event.old_assigned_to_id != event.new_assigned_to_id:
                 parts.append(f'ответственный: {_staff_name(event.new_assigned_to)}')
             when = timezone.localtime(event.created_at).strftime('%d.%m.%Y %H:%M')
-            rows.append((when, _staff_name(event.actor), '; '.join(parts)))
+            who = f'{event.actor_label} (из Telegram)' if event.actor_label else _staff_name(event.actor)
+            rows.append((when, who, '; '.join(parts)))
         if not rows:
             return _('Пока не менялась')
         return format_html(

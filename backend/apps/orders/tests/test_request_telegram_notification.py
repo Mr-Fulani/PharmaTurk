@@ -26,6 +26,9 @@ def _order(**overrides):
         contact_channel="whatsapp",
         contact_username="",
         comment="",
+        kind="cart",
+        locale="",
+        processing_status="new",
         created_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
     )
     data.update(overrides)
