@@ -6830,24 +6830,39 @@ class SportsProductTranslationSerializer(serializers.ModelSerializer):
 
 class SportsProductImageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    # Галерея страницы товара читает image_url, как у остальных разделов.
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SportsProductImage
-        fields = ['id', 'image', 'is_main', 'created_at']
+        fields = ['id', 'image', 'image_url', 'is_main', 'created_at']
 
     def get_image(self, obj):
         request = self.context.get('request')
         return _resolve_file_url(obj.image_file, request)
 
+    def get_image_url(self, obj) -> str | None:
+        request = self.context.get('request')
+        file_url = _resolve_file_url(obj.image_file, request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
 
 class SportsVariantImageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    # Галерея страницы товара читает image_url, как у остальных разделов.
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SportsVariantImage
-        fields = ['id', 'image', 'is_main', 'created_at']
+        fields = ['id', 'image', 'image_url', 'is_main', 'created_at']
 
     def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+    def get_image_url(self, obj) -> str | None:
         request = self.context.get('request')
         return _resolve_file_url(obj.image_file, request)
 
@@ -7103,24 +7118,39 @@ class AutoPartProductTranslationSerializer(serializers.ModelSerializer):
 
 class AutoPartProductImageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    # Галерея страницы товара читает image_url, как у остальных разделов.
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AutoPartProductImage
-        fields = ['id', 'image', 'is_main', 'created_at']
+        fields = ['id', 'image', 'image_url', 'is_main', 'created_at']
 
     def get_image(self, obj):
         request = self.context.get('request')
         return _resolve_file_url(obj.image_file, request)
 
+    def get_image_url(self, obj) -> str | None:
+        request = self.context.get('request')
+        file_url = _resolve_file_url(obj.image_file, request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
 
 class AutoPartVariantImageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    # Галерея страницы товара читает image_url, как у остальных разделов.
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AutoPartVariantImage
-        fields = ['id', 'image', 'is_main', 'created_at']
+        fields = ['id', 'image', 'image_url', 'is_main', 'created_at']
 
     def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+    def get_image_url(self, obj) -> str | None:
         request = self.context.get('request')
         return _resolve_file_url(obj.image_file, request)
 
