@@ -152,6 +152,7 @@ class MudarobaAdminSite(AdminSite):
                 "ProductDeletionLog",
                 "ProductMarketCheck",
                 "ProductSourceOffer",
+                "SearchDemand",
                 "SearchQueryStat",
                 "StaleProductCandidate",
                 "StockCheckSourceState",
