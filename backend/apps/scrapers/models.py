@@ -346,7 +346,8 @@ class ScrapedProductLog(models.Model):
 
     # Информация о товаре
     external_id = models.CharField(_("Внешний ID"), max_length=200)
-    external_url = models.URLField(_("Внешний URL"))
+    # Длина как у Product.external_url: адреса карточек Aloparça бывают длиннее 200 знаков.
+    external_url = models.URLField(_("Внешний URL"), max_length=2000)
     product_name = models.CharField(_("Название товара"), max_length=500)
 
     # Действие
