@@ -42,6 +42,8 @@ def telegram():
         result = True
         if method == "getChatMember":
             result = {"status": "member" if json["user_id"] == MEMBER else "left"}
+        if method == "getMyCommands":
+            result = [{"command": "stop", "description": "Отключить напоминания"}]
         return SimpleNamespace(json=lambda: {"ok": True, "result": result})
 
     with patch("apps.orders.telegram_buttons.requests.post", side_effect=post):
@@ -248,6 +250,23 @@ def test_membership_is_checked_in_orders_chat_and_cached(telegram):
     _press(_data(order_keyboard(order), "❌ Не состоялась"))
 
     assert _calls(telegram, "getChatMember") == [{"chat_id": CHAT, "user_id": MEMBER}]
+
+
+def test_member_gets_orders_command_in_personal_menu_once(telegram):
+    order = _order()
+
+    _press(_data(order_keyboard(order), "❌ Не состоялась"))
+    cache.delete(f"tg_orders_member:{CHAT}:{MEMBER}")  # членство проверяется снова, меню — нет
+    _press(_data(order_keyboard(order), "❌ Не состоялась"))
+    _press(_data(order_keyboard(order), "❌ Не состоялась"), user_id=STRANGER)
+
+    assert _calls(telegram, "setMyCommands") == [{
+        "commands": [
+            {"command": "orders", "description": "Незакрытые заявки по статусам"},
+            {"command": "stop", "description": "Отключить напоминания"},
+        ],
+        "scope": {"type": "chat", "chat_id": MEMBER},
+    }]
 
 
 def test_repeated_and_stale_press_changes_nothing(telegram):

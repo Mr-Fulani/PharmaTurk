@@ -33,6 +33,8 @@ ORDERS_LIST_LIMIT = 20
 ITEM_NAME_LIMIT = 80
 STATUS_MARK = "\n\n📌 Статус: "
 MEMBER_CACHE_SECONDS = 300
+MENU_CACHE_SECONDS = 24 * 60 * 60
+ORDERS_MENU_COMMAND = {"command": "orders", "description": "Незакрытые заявки по статусам"}
 NO_ACCESS = "Нет доступа: кнопки и список — только для участников чата заявок."
 
 # Ход заявки по порядку; «Не состоялась» — в стороне, с причиной
@@ -147,7 +149,23 @@ def is_orders_member(user_id) -> bool:
     allowed = status in ("creator", "administrator", "member") or (status == "restricted" and member.get("is_member"))
     if allowed:
         cache.set(key, True, MEMBER_CACHE_SECONDS)
+        _show_orders_in_menu(user_id)
     return bool(allowed)
+
+
+def _show_orders_in_menu(user_id) -> None:
+    """Добавляет /orders в меню команд бота в личке этого участника (раз в сутки). Покупатели её не видят.
+
+    Личное меню заменяет общее, поэтому общие команды бота переносятся в него как есть.
+    """
+    if not cache.add(f"tg_orders_menu:{user_id}", True, MENU_CACHE_SECONDS):
+        return
+    common = _call("getMyCommands")
+    commands = [ORDERS_MENU_COMMAND] + [
+        command for command in (common if isinstance(common, list) else [])
+        if command.get("command") != ORDERS_MENU_COMMAND["command"]
+    ]
+    _call("setMyCommands", commands=commands, scope={"type": "chat", "chat_id": user_id})
 
 
 def _who(tg_user: dict) -> str:
