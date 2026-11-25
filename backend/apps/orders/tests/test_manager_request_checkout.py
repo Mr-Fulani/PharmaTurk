@@ -14,7 +14,8 @@ from apps.users.models import User
 
 def _payload(**overrides):
     payload = {
-        "contact_name": "Request Test",
+        "contact_name": "Request",
+        "contact_last_name": "Test",
         "contact_phone": "+905550000001",
         "contact_email": "request@example.com",
         "contact_channel": "telegram",
@@ -254,6 +255,48 @@ def test_guest_needs_name_and_phone(guest_cart):
     assert "contact_name" in response.data
     assert "contact_phone" in response.data
     assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("last_name", [None, "", "   "])
+def test_guest_needs_last_name(guest_cart, last_name):
+    payload = _payload()
+    if last_name is None:
+        del payload["contact_last_name"]
+    else:
+        payload["contact_last_name"] = last_name
+
+    response = _post_as_guest(guest_cart, payload)
+
+    assert response.status_code == 400
+    assert "contact_last_name" in response.data
+    # Страница, открытая до обновления сайта, показывает покупателю только «detail»
+    assert "фамилию" in str(response.data["detail"])
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_signed_in_customer_needs_last_name(request_state):
+    user, item = request_state
+
+    response = _post(user, item, _payload(contact_last_name=""))
+
+    assert response.status_code == 400
+    assert "contact_last_name" in response.data
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_order_keeps_first_and_last_name_and_address(guest_cart):
+    response = _post_as_guest(
+        guest_cart,
+        _payload(contact_name=" Иван ", contact_last_name=" Петров ", shipping_address_text="Россия, Москва, Тверская 1"),
+    )
+
+    assert response.status_code == 201, response.data
+    order = Order.objects.get()
+    assert order.contact_name == "Иван Петров"
+    assert order.shipping_address_text == "Россия, Москва, Тверская 1"
 
 
 @pytest.mark.django_db(transaction=True)

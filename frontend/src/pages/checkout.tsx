@@ -30,6 +30,7 @@ import { gtmBeginCheckout, gtmGenerateLead, type GtmEcommerceItem } from '../lib
 import { ONLINE_PAYMENTS_ENABLED } from '../lib/payments'
 import ContactChannelPicker, { isUsernameChannel } from '../components/ContactChannelPicker'
 import { defaultCurrencyForLocale } from '../lib/requestCurrency'
+import { formatAddressLine, splitFullName } from '../lib/checkoutContact'
 
 interface Address {
   id: number
@@ -51,8 +52,8 @@ interface Address {
 }
 
 
-type CheckoutField = 'contact_name' | 'contact_phone' | 'contact_email' | 'contact_channel' | 'contact_username'
-const CHECKOUT_FIELDS: CheckoutField[] = ['contact_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username']
+type CheckoutField = 'contact_name' | 'contact_last_name' | 'contact_phone' | 'contact_email' | 'contact_channel' | 'contact_username'
+const CHECKOUT_FIELDS: CheckoutField[] = ['contact_name', 'contact_last_name', 'contact_phone', 'contact_email', 'contact_channel', 'contact_username']
 const PHONE_DIGITS_RE = /^\+?\d{9,15}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const fieldInputClass = (hasError: boolean) =>
@@ -82,6 +83,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
   const [useSavedAddress, setUseSavedAddress] = useState(false)
   const [contactName, setContactName] = useState('')
+  const [contactLastName, setContactLastName] = useState('')
+  // В сохранённом адресе получатель записан одной строкой «Имя Фамилия»
+  const setRecipientFromFullName = (fullName: string) => {
+    const { firstName, lastName } = splitFullName(fullName)
+    setContactName(firstName)
+    setContactLastName(lastName)
+  }
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [shippingAddressText, setShippingAddressText] = useState('')
@@ -158,11 +166,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         if (defaultAddress) {
           setSelectedAddressId(defaultAddress.id)
           setUseSavedAddress(true)
-          setContactName(defaultAddress.contact_name)
+          setRecipientFromFullName(defaultAddress.contact_name)
           setContactPhone(defaultAddress.contact_phone)
-          setShippingAddressText(
-            `${defaultAddress.country}, ${defaultAddress.city}, ${defaultAddress.street} ${defaultAddress.house}${defaultAddress.apartment ? `, кв. ${defaultAddress.apartment}` : ''}`
-          )
+          setShippingAddressText(formatAddressLine(defaultAddress))
         }
       } catch (error) {
         console.error('Failed to load data:', error)
@@ -177,22 +183,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   useEffect(() => {
     if (user) {
       if (!selectedAddressId) {
-        const fullName = `${(user as any).first_name || ''} ${(user as any).last_name || ''}`.trim()
-        if (fullName && !contactName) setContactName(fullName)
+        if ((user as any).first_name && !contactName) setContactName((user as any).first_name)
+        if ((user as any).last_name && !contactLastName) setContactLastName((user as any).last_name)
         if ((user as any).phone_number && !contactPhone) setContactPhone((user as any).phone_number)
       }
       if (!contactEmail) setContactEmail(user.email || '')
     }
-  }, [user, selectedAddressId, contactName, contactPhone, contactEmail])
+  }, [user, selectedAddressId, contactName, contactLastName, contactPhone, contactEmail])
 
   const handleAddressSelect = (address: Address) => {
     setSelectedAddressId(address.id)
     setUseSavedAddress(true)
-    setContactName(address.contact_name)
+    setRecipientFromFullName(address.contact_name)
     setContactPhone(address.contact_phone)
-    setShippingAddressText(
-      `${address.country}, ${address.city}, ${address.street} ${address.house}${address.apartment ? `, кв. ${address.apartment}` : ''}`
-    )
+    setShippingAddressText(formatAddressLine(address))
   }
 
   const handleUseManualAddress = () => {
@@ -202,7 +206,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     // Заполняем форму данными из контактной информации, если они уже введены
     setAddressFormData({
       address_type: 'home',
-      contact_name: contactName || '',
+      contact_name: `${contactName} ${contactLastName}`.trim(),
       contact_phone: contactPhone || '',
       country: '',
       region: '',
@@ -241,9 +245,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       }
     }
     // Формируем текстовый адрес для отправки
-    const addressText = `${addressFormData.country}, ${addressFormData.city}, ${addressFormData.street} ${addressFormData.house}${addressFormData.apartment ? `, кв. ${addressFormData.apartment}` : ''}`
-    setShippingAddressText(addressText)
-    setContactName(addressFormData.contact_name)
+    setShippingAddressText(formatAddressLine(addressFormData))
+    setRecipientFromFullName(addressFormData.contact_name)
     setContactPhone(addressFormData.contact_phone)
     setShowAddressForm(false)
   }
@@ -265,6 +268,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     // Ошибки показываем у полей, а не всплывающими окнами
     const errors: Partial<Record<CheckoutField, string>> = {}
     if (!contactName.trim()) errors.contact_name = t('field_required', 'Заполните это поле')
+    if (!contactLastName.trim()) errors.contact_last_name = t('checkout_last_name_required', 'Укажите фамилию: она нужна для оформления доставки')
     const phoneDigits = contactPhone.replace(/[\s()-]/g, '')
     if (!phoneDigits) errors.contact_phone = t('field_required', 'Заполните это поле')
     else if (!PHONE_DIGITS_RE.test(phoneDigits)) errors.contact_phone = t('phone_invalid', 'Укажите номер в формате +79991234567')
@@ -287,7 +291,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     try {
       const body = new URLSearchParams()
       if (website) body.set('website', website)
-      body.set('contact_name', contactName)
+      body.set('contact_name', contactName.trim())
+      body.set('contact_last_name', contactLastName.trim())
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
       body.set('contact_channel', contactChannel)
@@ -545,20 +550,37 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
               {/* Контактная информация */}
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_contact_info', 'Контактная информация')}</h2>
+                <h2 className="text-lg font-semibold text-gray-900">{t('checkout_contact_info', 'Контактная информация')}</h2>
+                <p className="mt-1 mb-4 text-sm text-gray-600">
+                  {t('checkout_contact_hint', 'Имя, фамилия и телефон получателя обязательны: без них служба доставки не оформит посылку.')}
+                </p>
                 <div className="space-y-4">
-                  <label className="block">
-                    <span className="text-sm font-medium text-gray-700">{t('checkout_recipient_name', 'Имя получателя')} *</span>
-                    <input
-                      type="text"
-                      value={contactName}
-                      onChange={(e) => { setContactName(e.target.value); clearFieldError('contact_name') }}
-                      autoComplete="name"
-                      aria-invalid={fieldErrors.contact_name ? true : undefined}
-                      className={fieldInputClass(Boolean(fieldErrors.contact_name))}
-                    />
-                    {fieldErrors.contact_name && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_name}</span>}
-                  </label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-sm font-medium text-gray-700">{t('checkout_first_name', 'Имя')} *</span>
+                      <input
+                        type="text"
+                        value={contactName}
+                        onChange={(e) => { setContactName(e.target.value); clearFieldError('contact_name') }}
+                        autoComplete="given-name"
+                        aria-invalid={fieldErrors.contact_name ? true : undefined}
+                        className={fieldInputClass(Boolean(fieldErrors.contact_name))}
+                      />
+                      {fieldErrors.contact_name && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_name}</span>}
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium text-gray-700">{t('checkout_last_name', 'Фамилия')} *</span>
+                      <input
+                        type="text"
+                        value={contactLastName}
+                        onChange={(e) => { setContactLastName(e.target.value); clearFieldError('contact_last_name') }}
+                        autoComplete="family-name"
+                        aria-invalid={fieldErrors.contact_last_name ? true : undefined}
+                        className={fieldInputClass(Boolean(fieldErrors.contact_last_name))}
+                      />
+                      {fieldErrors.contact_last_name && <span className="mt-1 block text-xs font-medium text-[var(--danger)]">{fieldErrors.contact_last_name}</span>}
+                    </label>
+                  </div>
                   <label className="block">
                     <span className="text-sm font-medium text-gray-700">{t('checkout_phone', 'Телефон')} *</span>
                     <input
@@ -886,13 +908,16 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
               {/* Простой текстовый адрес (если форма не показана) */}
               {!showAddressForm && (!useSavedAddress || addresses.length === 0) && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_shipping_address', 'Адрес доставки')}</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">{t('checkout_shipping_address', 'Адрес доставки')}</h2>
+                  <p className="mt-1 mb-4 text-sm text-gray-600">
+                    {t('checkout_address_hint', 'Если нужна доставка, укажите полный адрес с индексом — так посылка дойдёт без задержек. Адрес можно уточнить и позже, с менеджером.')}
+                  </p>
                   <label className="block">
                     <textarea
                       value={shippingAddressText}
                       onChange={(e) => setShippingAddressText(e.target.value)}
                       rows={4}
-                      placeholder={t('checkout_address_placeholder', 'Страна, город, улица, дом, квартира')}
+                      placeholder={t('checkout_address_placeholder', 'Страна, город, индекс, улица, дом, квартира')}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </label>

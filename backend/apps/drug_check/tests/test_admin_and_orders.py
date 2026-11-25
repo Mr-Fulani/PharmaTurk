@@ -227,7 +227,7 @@ def test_manager_telegram_message_has_check_and_links_under_the_medicine(
     assert len(texts) == 1
     check_url = "https://site.test" + reverse("admin:drug_check_medicine", args=[nexium.pk])
     lookup_url = "https://site.test" + reverse("admin:drug_check_lookup") + "?q=8699786040021"
-    medicine, shoes = texts[0].split("\n\n")[3:5]
+    medicine, shoes = texts[0].split("\n\n")[4:6]
     lines = medicine.split("\n")
     assert lines[0] == "1. <b>NEXIUM (эзомепразол) 40 мг, 14 таб.</b>"
     assert lines[1] == "1 шт. · 100.00 RUB"

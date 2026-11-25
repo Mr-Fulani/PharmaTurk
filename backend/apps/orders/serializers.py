@@ -2086,7 +2086,9 @@ class CreateOrderSerializer(serializers.Serializer):
     """
     Запрос на создание заказа из корзины
     """
-    contact_name = serializers.CharField(max_length=150)
+    contact_name = serializers.CharField(max_length=75)
+    # Фамилия обязательна (проверка в validate): служба доставки оформляет отправление на имя и фамилию.
+    contact_last_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=74)
     contact_phone = serializers.CharField(max_length=32)
     contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     contact_channel = serializers.ChoiceField(choices=CONTACT_CHANNEL_CHOICES, required=False, allow_blank=True)
@@ -2105,6 +2107,13 @@ class CreateOrderSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         attrs = validate_contact_fields(super().validate(attrs))
+        last_name = (attrs.pop("contact_last_name", None) or "").strip()
+        if not last_name:
+            message = _("Укажите фамилию: она нужна для оформления доставки.")
+            # «detail» — для страниц, открытых до обновления сайта: они показывают только его
+            raise serializers.ValidationError({"contact_last_name": message, "detail": message})
+        # В заявке имя и фамилия хранятся одной строкой «Имя Фамилия» (Order.contact_name)
+        attrs["contact_name"] = f"{attrs['contact_name']} {last_name}"
         if not settings.ORDER_ONLINE_PAYMENTS_ENABLED:
             # Онлайн-оплата выключена: любой заказ — заявка менеджеру,
             # способ оплаты согласуется с клиентом по каналу связи.

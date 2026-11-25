@@ -17,7 +17,8 @@ from apps.users.models import User
 
 def _checkout_payload(*, promo_code=""):
     return {
-        "contact_name": "Checkout Test",
+        "contact_name": "Checkout",
+        "contact_last_name": "Test",
         "contact_phone": "+905550000000",
         "contact_email": "checkout@example.com",
         "shipping_method": "ground",

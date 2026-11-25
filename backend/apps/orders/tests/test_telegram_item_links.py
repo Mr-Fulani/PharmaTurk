@@ -85,7 +85,7 @@ def test_supplement_gets_order_link_and_item_links():
 
     (text,) = _send(order)
 
-    header, _buyer, _title, item = text.split("\n\n")[:4]
+    header, _buyer, _address, _title, item = text.split("\n\n")[:5]
     assert header == (
         f"📝 <b>Новая заявка</b> <code>{order.number}</code>\n"
         + _link(ADMIN + reverse("admin:orders_order_change", args=[order.pk]), "Открыть заявку в админке")
@@ -106,7 +106,7 @@ def test_medicine_keeps_check_line_and_gets_links():
 
     (text,) = _send(_order(medicine.base_product))
 
-    lines = text.split("\n\n")[3].split("\n")
+    lines = text.split("\n\n")[4].split("\n")
     assert lines[-2].startswith("🔎 <a href=")
     assert lines[-1] == (
         "🔗 "
@@ -123,7 +123,7 @@ def test_product_without_source_and_hidden_product():
 
     (text,) = _send(_order(plain, hidden))
 
-    first, second = text.split("\n\n")[3:5]
+    first, second = text.split("\n\n")[4:6]
     assert first.split("\n")[-1] == (
         "🔗 " + _link(ADMIN + _accessory_admin_url(plain), "В админке")
         + " · " + _link(f"{SITE}/product/{plain.slug}", "На сайте")

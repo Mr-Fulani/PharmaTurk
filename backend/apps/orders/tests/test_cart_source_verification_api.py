@@ -532,7 +532,7 @@ def test_checkout_rejects_saved_blocking_source_issue(source_cart_product):
 
     response = client.post(
         reverse("orders-create-from-cart"),
-        {"contact_name": "Test", "contact_phone": "+900000000"},
+        {"contact_name": "Test", "contact_last_name": "Buyer", "contact_phone": "+900000000"},
         format="json",
     )
 
