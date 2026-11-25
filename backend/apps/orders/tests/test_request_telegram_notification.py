@@ -66,6 +66,27 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         self.assertIn("Итого: 150.00 RUB", admin)
         self.assertEqual(telegram_post.call_args_list[0].kwargs["json"]["parse_mode"], "HTML")
 
+    def test_admin_message_shows_delivery_address(self, select_related, telegram_post, *_):
+        order = _order(shipping_address_text="Россия, 101000, Москва,\nул. Тверская 1 <кв. 5> & подъезд 2")
+        admin = self._texts(select_related, telegram_post, order)["admin-chat"]
+
+        self.assertIn(
+            "📍 <b>Адрес доставки</b>\nРоссия, 101000, Москва, ул. Тверская 1 &lt;кв. 5&gt; &amp; подъезд 2\n\n",
+            admin,
+        )
+        # Адрес идёт сразу за контактами покупателя, до позиций и итога
+        self.assertLess(admin.index("Покупатель"), admin.index("Адрес доставки"))
+        self.assertLess(admin.index("Адрес доставки"), admin.index("Итого"))
+
+    def test_admin_message_without_address_says_so(self, select_related, telegram_post, *_):
+        # У заявок без адреса (в том числе старых) сообщение собирается как обычно
+        for order in (_order(), _order(shipping_address_text="  ")):
+            telegram_post.reset_mock()
+            admin = self._texts(select_related, telegram_post, order)["admin-chat"]
+
+            self.assertIn("📍 <b>Адрес доставки</b>\nне указан\n\n", admin)
+            self.assertIn("Итого: 150.00 RUB", admin)
+
     def test_user_input_cannot_break_html_markup(self, select_related, telegram_post, *_):
         order = _order(contact_name="Ivan <b>& Co</i>", comment='<a href="https://evil.example">жми</a> & _*`[')
         texts = self._texts(select_related, telegram_post, order)

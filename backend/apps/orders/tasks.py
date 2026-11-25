@@ -882,6 +882,9 @@ def notify_new_order_telegram(
         write_line = _tg_write_line(order, order.number, item_names, locale=locale)
         if write_line:
             buyer.append(write_line)
+        # Адрес нужен менеджеру для оформления отправления; у старых заявок его может не быть
+        address = " ".join((getattr(order, "shipping_address_text", "") or "").split())
+        address_block = "📍 <b>Адрес доставки</b>\n" + (h(address) if address else "не указан")
         total = [f"💰 <b>Итого: {order.total_amount} {order.currency}</b>"]
         if on_request:
             total.append("Цена по запросу (в сумму не вошли): " + h("; ".join(on_request)))
@@ -893,6 +896,7 @@ def notify_new_order_telegram(
                 f"{'📝 <b>Новая заявка</b>' if is_request else '📦 <b>Новый заказ</b>'} <code>{h(order.number)}</code>\n"
                 + _tg_link(_admin_url("admin:orders_order_change", order.id), "Открыть заявку в админке"),
                 "\n".join(buyer),
+                address_block,
             ]
             if blocks:
                 sections += ["🛒 <b>Позиции</b>", *blocks]

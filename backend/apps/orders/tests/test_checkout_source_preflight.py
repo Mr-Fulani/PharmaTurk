@@ -99,7 +99,8 @@ def _decision(offer, *, source_price="90.00", public_price="100.00", issues=()):
 
 def _checkout_payload():
     return {
-        "contact_name": "Source Checkout",
+        "contact_name": "Source",
+        "contact_last_name": "Checkout",
         "contact_phone": "+905550000000",
         "contact_email": "source-checkout@example.test",
         "shipping_method": "ground",
