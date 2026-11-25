@@ -119,4 +119,3 @@ def enqueue_auto_part_card(product) -> None:
 
     with transaction.atomic():
         enqueue_or_apply_product_ai(product_id=product.pk, auto_apply=True)
-
