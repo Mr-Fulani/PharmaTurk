@@ -1,4 +1,4 @@
-"""Кнопки под уведомлением о заявке в Telegram-чате заявок и команда /orders.
+"""Кнопки под уведомлением о заявке в Telegram-чате заявок и команда /orders (сводка по отметкам).
 
 Кнопки двигают только отметку «Обработка» (Order.processing_status) — тем же путём, что и
 админка (processing.change_processing). «Статус для клиента» не меняется, покупателю ничего
@@ -18,15 +18,19 @@ from apps.users.models import User
 from .contacts import contact_links, contact_message, order_item_names
 from .models import Order
 from .processing import change_processing
-from .tasks import _admin_url, _orders_chat_id, _split_tg_text, _tg_html_escape, _tg_length, _tg_link
+from .tasks import _admin_url, _orders_chat_id, _tg_html_escape, _tg_length
 
 logger = logging.getLogger(__name__)
 
 PS = Order.ProcessingStatus
 # callback_data (предел Telegram — 64 байта): o:<id заявки>:<отметка на кнопках>:<действие>[:<значение>]
 CALLBACK_PREFIX = "o:"
+# Кнопки сводки /orders: ol:<отметка> — заявки с этой отметкой, ol: — сама сводка
+LIST_PREFIX = "ol:"
 ORDERS_COMMANDS = ("/orders", "/заявки")
-ORDERS_LIST_LIMIT = 50
+# Каждая заявка списка — отдельное сообщение со своими кнопками
+ORDERS_LIST_LIMIT = 20
+ITEM_NAME_LIMIT = 80
 STATUS_MARK = "\n\n📌 Статус: "
 MEMBER_CACHE_SECONDS = 300
 NO_ACCESS = "Нет доступа: кнопки и список — только для участников чата заявок."
@@ -247,44 +251,91 @@ def _press(callback: dict) -> tuple[str, bool]:
 
 
 def handle_callback(callback: dict) -> bool:
-    """Нажатие кнопки под заявкой. Telegram получает ответ всегда, иначе на кнопке висят «часики»."""
+    """Нажатие кнопки под заявкой или в сводке. Telegram получает ответ всегда, иначе на кнопке висят «часики»."""
     text, alert = "Не получилось. Попробуйте ещё раз или откройте заявку в админке.", True
     try:
-        text, alert = _press(callback)
+        if str(callback.get("data") or "").startswith(LIST_PREFIX):
+            text, alert = _press_list(callback)
+        else:
+            text, alert = _press(callback)
     finally:
         _call("answerCallbackQuery", callback_query_id=callback.get("id"), text=text, show_alert=alert)
     return True
 
 
+def _send_summary(chat_id) -> None:
+    """Сводка незакрытых заявок: по кнопке на каждую отметку, на которой есть заявки."""
+    counts = {status: 0 for status in CHAIN[:-1]}
+    for status in Order.objects.filter(processing_status__in=counts).values_list("processing_status", flat=True):
+        counts[status] += 1
+    rows = [
+        [{"text": f"{status.label} ({count})", "callback_data": f"{LIST_PREFIX}{status}"}]
+        for status, count in counts.items()
+        if count
+    ]
+    rows.append([{
+        "text": "🗂 Все незакрытые в админке",
+        "url": _admin_url("admin:orders_order_changelist") + "?processing=open",
+    }])
+    total = sum(counts.values())
+    text = f"📋 <b>Незакрытые заявки: {total}</b>"
+    text += "\nНажмите на строку — покажу эти заявки." if total else "\nВсе заявки закрыты."
+    _call("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML", reply_markup={"inline_keyboard": rows})
+
+
+def _order_card(order) -> str:
+    """Заявка в списке: номер, клиент, что в ней и сумма — и та же строка «Статус», что под уведомлением."""
+    h = _tg_html_escape
+    kind = "🔎 " if order.kind == Order.Kind.SOURCING else ""
+    lines = [f"{kind}<b>№{h(order.number)}</b> · {h(order.contact_name)} · {timezone.localtime(order.created_at):%d.%m.%Y}"]
+    for item in order.items.all():
+        name = " ".join(item.product_name.split())
+        if len(name) > ITEM_NAME_LIMIT:
+            name = name[: ITEM_NAME_LIMIT - 1].rstrip() + "…"
+        size = f" ({h(item.chosen_size)})" if item.chosen_size else ""
+        lines.append(f"• {h(name)}{size} × {item.quantity}")
+    lines.append(f"💰 {order.total_amount} {h(order.currency)}")
+    return "\n".join(lines) + STATUS_MARK + h(_status_line(order))
+
+
+def _press_list(callback: dict) -> tuple[str, bool]:
+    """Кнопка сводки: присылает заявки выбранной отметки, каждую — со своими кнопками шагов."""
+    if not is_orders_member((callback.get("from") or {}).get("id")):
+        return NO_ACCESS, True
+    chat_id = ((callback.get("message") or {}).get("chat") or {}).get("id")
+    status = str(callback.get("data"))[len(LIST_PREFIX):]
+    if status not in PS.values:
+        _send_summary(chat_id)
+        return "", False
+    found = Order.objects.filter(processing_status=status)
+    total = found.count()
+    orders = list(found.order_by("created_at").prefetch_related("items")[:ORDERS_LIST_LIMIT])
+    for order in orders:
+        _call(
+            "sendMessage", chat_id=chat_id, text=_order_card(order), parse_mode="HTML",
+            link_preview_options={"is_disabled": True}, reply_markup=order_keyboard(order),
+        )
+    label = PS(status).label
+    text = f"<b>{_tg_html_escape(label)}</b>: {total}"
+    if total > len(orders):
+        text += f"\nПоказаны первые {len(orders)}, остальные — в админке."
+    _call(
+        "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
+        reply_markup={"inline_keyboard": [
+            [{"text": "🗂 Эти заявки в админке", "url": _admin_url("admin:orders_order_changelist") + f"?processing={status}"}],
+            [{"text": "↩️ К сводке", "callback_data": LIST_PREFIX}],
+        ]},
+    )
+    return f"{label}: {total}", False
+
+
 def handle_orders_command(message: dict) -> bool:
-    """Команда /orders в личном чате с ботом: незакрытые заявки со статусами и ссылками в админку."""
+    """Команда /orders в личном чате с ботом: сводка незакрытых заявок с кнопками по отметкам."""
     chat = message.get("chat") or {}
     if chat.get("type") != "private":
         return False
     if not is_orders_member((message.get("from") or {}).get("id")):
         _call("sendMessage", chat_id=chat.get("id"), text=NO_ACCESS)
         return False
-
-    open_orders = Order.objects.exclude(processing_status__in=(PS.DONE, PS.CANCELLED))
-    total = open_orders.count()
-    orders = sorted(
-        open_orders.order_by("-created_at")[:ORDERS_LIST_LIMIT], key=lambda order: CHAIN.index(order.processing_status),
-    )
-    h = _tg_html_escape
-    lines = [f"📋 <b>Незакрытые заявки: {total}</b>"]
-    for order in orders:
-        kind = "🔎 " if order.kind == Order.Kind.SOURCING else ""
-        lines.append(
-            f"{kind}{_tg_link(_admin_url('admin:orders_order_change', order.id), '№' + order.number)}"
-            f" — {h(_short(order.get_processing_status_display()))} · {h(order.contact_name)}"
-            f" · {timezone.localtime(order.created_at):%d.%m}"
-        )
-    if total > len(orders):
-        lines.append(f"Показаны последние {len(orders)}.")
-    lines.append(_tg_link(_admin_url("admin:orders_order_changelist") + "?processing=open", "Все незакрытые в админке"))
-    for part in _split_tg_text("\n".join(lines)):
-        _call(
-            "sendMessage", chat_id=chat.get("id"), text=part, parse_mode="HTML",
-            link_preview_options={"is_disabled": True},
-        )
+    _send_summary(chat.get("id"))
     return True

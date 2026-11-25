@@ -380,23 +380,69 @@ def _command(text, user_id=MEMBER, chat_type="private"):
     })
 
 
-def test_orders_command_lists_open_orders_for_member(telegram):
-    waiting = _order(processing_status=PS.WAITING_CLIENT, contact_name="Мария <b>")
-    new = _order()
-    done = _order(processing_status=PS.DONE)
-    cancelled = _order(processing_status=PS.CANCELLED)
+def test_orders_command_shows_summary_with_status_buttons(telegram):
+    _order(processing_status=PS.PAID)
+    _order(processing_status=PS.PAID)
+    _order()
+    _order(processing_status=PS.DONE)
+    _order(processing_status=PS.CANCELLED)
 
     assert _command("/orders") is True
 
     sent = _calls(telegram, "sendMessage")[0]
-    text = sent["text"]
-    assert sent["chat_id"] == MEMBER and sent["parse_mode"] == "HTML"
-    assert "Незакрытые заявки: 2" in text
-    assert f'<a href="https://mudaroba.test/admin/orders/order/{new.id}/change/">№{new.number}</a> — Новая' in text
-    assert f"№{waiting.number}</a> — Написали клиенту · Мария &lt;b&gt;" in text
-    assert text.index(new.number) < text.index(waiting.number)  # по ходу заявки: сначала новые
-    assert done.number not in text and cancelled.number not in text
-    assert "/admin/orders/order/?processing=open" in text
+    assert sent["chat_id"] == MEMBER and "Незакрытые заявки: 3" in sent["text"]
+    rows = sent["reply_markup"]["inline_keyboard"]
+    assert [(row[0]["text"], row[0].get("callback_data")) for row in rows[:-1]] == [
+        ("Новая (1)", "ol:new"), ("Оплачено — закупаем (2)", "ol:paid"),
+    ]
+    assert rows[-1][0]["url"].endswith("/admin/orders/order/?processing=open")
+
+
+def _press_summary(data, user_id=MEMBER):
+    return process_telegram_webhook({
+        "callback_query": {
+            "id": "cb2", "from": {"id": user_id}, "data": data,
+            "message": {"message_id": 1, "chat": {"id": user_id, "type": "private"}},
+        }
+    })
+
+
+def test_status_button_lists_only_these_orders_with_items_and_step_buttons(telegram):
+    paid = _order(processing_status=PS.PAID, contact_name="Мария <b>")
+    OrderItem.objects.create(order=paid, product_name="PAROL 500 mg", chosen_size="20 таб", price=5, quantity=3, total=15)
+    other = _order(processing_status=PS.PRICE_SENT)
+
+    assert _press_summary("ol:paid") is True
+
+    card, footer = _calls(telegram, "sendMessage")
+    assert card["chat_id"] == MEMBER
+    assert f"<b>№{paid.number}</b> · Мария &lt;b&gt;" in card["text"]
+    assert "• PAROL 500 mg (20 таб) × 3" in card["text"]
+    assert "1000.00 RUB" in card["text"]
+    assert STATUS_MARK + "Оплачено — закупаем" in card["text"]
+    assert _data(card["reply_markup"], "📦 Отправлено") == f"o:{paid.id}:paid:s:shipped"
+    assert other.number not in card["text"]
+    assert "Оплачено — закупаем</b>: 1" in footer["text"]
+    buttons = [button for row in footer["reply_markup"]["inline_keyboard"] for button in row]
+    assert buttons[0]["url"].endswith("?processing=paid") and buttons[1]["callback_data"] == "ol:"
+    assert _calls(telegram, "answerCallbackQuery")[0]["text"] == "Оплачено — закупаем: 1"
+
+    # Кнопка шага в списке работает так же, как под уведомлением
+    _press(_data(card["reply_markup"], "📦 Отправлено"), message={"message_id": 9, "chat": {"id": MEMBER}, "text": "x"})
+    paid.refresh_from_db()
+    assert paid.processing_status == PS.SHIPPED
+
+
+def test_back_to_summary_and_stranger_denied(telegram):
+    order = _order()
+
+    _press_summary("ol:")
+    assert "Незакрытые заявки: 1" in _calls(telegram, "sendMessage")[0]["text"]
+
+    _press_summary("ol:new", user_id=STRANGER)
+    assert len(_calls(telegram, "sendMessage")) == 1
+    answer = _calls(telegram, "answerCallbackQuery")[-1]
+    assert answer["text"].startswith("Нет доступа") and order.number not in answer["text"]
 
 
 def test_orders_command_denied_to_stranger(telegram):

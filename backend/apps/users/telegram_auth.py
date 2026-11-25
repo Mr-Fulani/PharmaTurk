@@ -126,7 +126,7 @@ def process_telegram_webhook(payload: dict) -> bool:
 
         callback = payload.get('callback_query')
         if callback:
-            if str(callback.get('data') or '').startswith(telegram_buttons.CALLBACK_PREFIX):
+            if str(callback.get('data') or '').startswith((telegram_buttons.CALLBACK_PREFIX, telegram_buttons.LIST_PREFIX)):
                 return telegram_buttons.handle_callback(callback)
             return _process_cart_reminders_callback(callback)
 
