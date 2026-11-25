@@ -1334,6 +1334,10 @@ aloparca.com и сервер фото `googlecdn.aloparca.com` отвечают 
 **Ночной сверки нет** (решение владельца 25.11.2026): источник платный, стоит в
 `NIGHTLY_STOCK_CHECK_PAID_SOURCES`.
 
+Адреса карточек Aloparça бывают длиннее 200 знаков (в адресе перечень машин): журнал парсинга
+`ScrapedProductLog.external_url` принимает до 2000, как `Product.external_url` (миграция `scrapers/0039`;
+25.11.2026 первый сбор с сервера остановился на такой карточке).
+
 **Русская карточка** собирается кодом при обработке товара («Запустить AI»): название, описание, SEO —
 из вида детали, бренда, артикула, OEM и применимости, модель не вызывается
 (`apps/ai/services/rules/auto_parts.py`, [docs/AUTO_PARTS_AI_DESIGN.md](docs/AUTO_PARTS_AI_DESIGN.md)).

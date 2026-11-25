@@ -548,6 +548,20 @@ def test_service_saves_numbers_fitments_and_normalized_part_number(auto_parts_se
     assert saved["specs"]["Komple uzunluk [mm]"] == "718"
 
 
+def test_card_with_address_longer_than_200_characters_is_saved_and_logged(auto_parts_session):
+    """Адрес карточки Aloparça — до ~230 знаков (перечень машин): журнал парсинга его принимает."""
+    from apps.scrapers.models import ScrapedProductLog
+
+    session, service = auto_parts_session
+    scraped = _parser().parse_product_detail(SITE + LAMBDA)
+    scraped.url = f"{SITE}/product/bosch-0258010246-oksijen-lambda-sensoru-" + "peugeot-208-i-15-bluehdi-18-" * 7
+
+    results = service._process_scraped_products(session, [scraped])
+
+    assert len(scraped.url) > 200 and (results["created"], results["errors"]) == (1, 0)
+    assert ScrapedProductLog.objects.get(session=session).external_url == scraped.url
+
+
 def test_rescrape_replaces_only_rows_of_this_source(auto_parts_session):
     session, service = auto_parts_session
     service._process_scraped_products(session, [_parser().parse_product_detail(SITE + LAMBDA)])
