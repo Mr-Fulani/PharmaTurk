@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 PS = Order.ProcessingStatus
 # callback_data (предел Telegram — 64 байта): o:<id заявки>:<отметка на кнопках>:<действие>[:<значение>]
 CALLBACK_PREFIX = "o:"
-ORDERS_COMMANDS = ("/orders", "/заявки", "заявки")
+ORDERS_COMMANDS = ("/orders", "/заявки")
 ORDERS_LIST_LIMIT = 50
 STATUS_MARK = "\n\n📌 Статус: "
 MEMBER_CACHE_SECONDS = 300
