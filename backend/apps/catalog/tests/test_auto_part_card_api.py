@@ -3,7 +3,15 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.catalog.models import AutoPartFitment, AutoPartNumber, AutoPartProduct, Category
+from apps.catalog.models import (
+    AutoPartFitment,
+    AutoPartNumber,
+    AutoPartProduct,
+    AutoPartProductTranslation,
+    Category,
+    SportsProduct,
+    SportsProductTranslation,
+)
 
 URL = "/api/catalog/auto-parts/products/{slug}"
 
@@ -88,3 +96,21 @@ def test_page_resolve_carries_the_same_blocks(part):
     payload = data.get("payload") or data.get("product") or data
     assert payload["fitment_summary"]["count"] == 4
     assert [row["number"] for row in payload["oem_numbers"]] == ["DF6513S", "34 21 6 792 227"]
+
+
+@pytest.mark.parametrize(
+    ("url", "model", "translation_model"),
+    [
+        ("/api/catalog/auto-parts/products", AutoPartProduct, AutoPartProductTranslation),
+        ("/api/catalog/sports/products", SportsProduct, SportsProductTranslation),
+    ],
+)
+def test_list_returns_translations_for_the_card_language(db, url, model, translation_model):
+    """Список отдаёт переводы: без них витрина /en показывает русские названия."""
+    category = Category.objects.create(name="Раздел", slug="section")
+    product = model.objects.create(name="Русское название", slug="item-1", category=category, price=100, currency="TRY")
+    translation_model.objects.create(product=product, locale="en", name="English name")
+
+    row = APIClient().get(url, HTTP_ACCEPT_LANGUAGE="en").json()["results"][0]
+
+    assert {"locale": "en", "name": "English name"}.items() <= row["translations"][0].items()
