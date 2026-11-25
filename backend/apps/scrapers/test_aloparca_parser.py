@@ -8,6 +8,7 @@ OEM-номеров, лямбда-зонд Bosch «Stokta yok». От стран�
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -483,6 +484,23 @@ def test_unchanged_rescrape_does_not_rewrite_tables(auto_parts_session):
 
     assert set(AutoPartFitment.objects.values_list("pk", flat=True)) == ids
     assert AutoPartNumber.objects.count() == 3
+
+
+def test_new_part_is_queued_for_its_card_once(auto_parts_session, django_capture_on_commit_callbacks):
+    """Русская и английская карточка ставится в обработку сразу при сборе, повторный сбор её не дублирует."""
+    session, service = auto_parts_session
+
+    with patch("apps.ai.tasks.process_product_ai_task.apply_async") as submit:
+        with django_capture_on_commit_callbacks(execute=True):
+            service._process_scraped_products(session, [_parser().parse_product_detail(SITE + LAMBDA)])
+        with django_capture_on_commit_callbacks(execute=True):
+            service._process_scraped_products(session, [_parser().parse_product_detail(SITE + LAMBDA)])
+
+    product = Product.objects.get(external_id="aloparca-10893")
+    assert submit.call_count == 1
+    kwargs = submit.call_args.kwargs["kwargs"]
+    assert (kwargs["product_id"], kwargs["processing_type"], kwargs["auto_apply"]) == (product.pk, "full", True)
+    assert product.ai_logs.count() == 1
 
 
 def test_category_route_wins_over_root_task(db):

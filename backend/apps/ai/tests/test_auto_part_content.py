@@ -146,13 +146,17 @@ def test_unknown_kind_is_an_error_not_an_invented_title():
 
 
 @pytest.mark.django_db
-def test_processing_applies_russian_card_without_calling_a_model():
+@pytest.mark.parametrize(
+    "options",
+    [{"analyze_images": False, "categorize": False, "force": True}, {}],
+    ids=["explicit", "queue-defaults"],
+)
+def test_processing_applies_russian_card_without_calling_a_model(options):
+    """Вторая строка — как ставит парсер и кнопка админки: без опций, модель всё равно не вызывается."""
     part = _part()
     generator = _generator()
 
-    log = generator.process_product(
-        part.base_product.id, auto_apply=True, options={"analyze_images": False, "categorize": False, "force": True},
-    )
+    log = generator.process_product(part.base_product.id, auto_apply=True, options=options)
 
     log.refresh_from_db()
     assert log.status == AIProcessingStatus.APPROVED, (log.error_message, log.application_report)
