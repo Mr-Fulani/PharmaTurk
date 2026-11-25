@@ -62,7 +62,7 @@ from .base.scraper import (
 )
 from apps.catalog.services import CatalogNormalizer, build_image_alt_text
 from apps.http_errors import SourceRateLimitedError
-from .auto_parts import sync_auto_part_data
+from .auto_parts import enqueue_auto_part_card, sync_auto_part_data
 from apps.catalog.utils.tr_vocab import (
     match_turkish_product_term,
     normalize_ascii_text as normalize_tr_ascii_text,
@@ -4550,6 +4550,7 @@ class ScraperIntegrationService:
         # Автозапчасти: артикул, OEM-номера и применимость — в свои таблицы.
         if sync_auto_part_data(existing_product, scraped_product):
             content_changed = True
+        enqueue_auto_part_card(existing_product)
 
         # Обрабатываем аналоги, если это медицина
         if existing_product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):
@@ -5574,6 +5575,7 @@ class ScraperIntegrationService:
 
         # Автозапчасти: артикул, OEM-номера и применимость — в свои таблицы.
         sync_auto_part_data(product, scraped_product)
+        enqueue_auto_part_card(product)
 
         # Обрабатываем аналоги, если это медицина
         if product.product_type == "medicines" and self._has_medicine_analog_work(scraped_product):

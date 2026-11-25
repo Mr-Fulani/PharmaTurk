@@ -104,3 +104,18 @@ def sync_auto_part_data(product, scraped_product) -> bool:
             )
             changed = True
     return changed
+
+
+def enqueue_auto_part_card(product) -> None:
+    """Русская и английская карточка — сразу после сбора, без кнопки в админке.
+
+    Карточку автозапчасти собирает код (``apps/ai/services/rules/auto_parts.py``), модель не
+    вызывается, поэтому ждать ручного запуска незачем. Уже обработанная карточка пропускается;
+    неудачная (вида детали нет в словаре) пробуется снова при следующем сборе.
+    """
+    if product.product_type != "auto_parts":
+        return
+    from apps.ai.tasks import enqueue_or_apply_product_ai
+
+    with transaction.atomic():
+        enqueue_or_apply_product_ai(product_id=product.pk, auto_apply=True)
