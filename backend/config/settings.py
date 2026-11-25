@@ -809,7 +809,7 @@ PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS = env.int(
 # запрашивается ни при открытии карточки, ни при открытии корзины. Источник без
 # записи проверяется при каждом открытии.
 PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS = env.json(
-    "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", default={"flo": 86400}
+    "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", default={"flo": 86400, "aloparca": 86400}
 )
 PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
     "PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO", default=0.05
@@ -833,7 +833,9 @@ NIGHTLY_STOCK_CHECK_SOURCES = env.list(
 )
 NIGHTLY_STOCK_CHECK_PAID_SOURCES = env.list(
     "NIGHTLY_STOCK_CHECK_PAID_SOURCES",
-    default=["flo", "zara", "bershka", "pullandbear", "massimodutti", "akakce", "instagram", "ilacfiyati"],
+    default=[
+        "flo", "zara", "bershka", "pullandbear", "massimodutti", "akakce", "instagram", "ilacfiyati", "aloparca",
+    ],
 )
 # Тихие часы по TIME_ZONE (МСК = Турция); Beat запускает пачки 01:00–04:50 и 06:00–06:50.
 NIGHTLY_STOCK_CHECK_START = env("NIGHTLY_STOCK_CHECK_START", default="01:00")

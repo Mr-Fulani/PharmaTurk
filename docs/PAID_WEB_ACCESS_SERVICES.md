@@ -125,7 +125,8 @@ acknowledge и checkout используют сохранённый snapshot и 
 в `CELERY_BEAT_SCHEDULE`. Полный импорт FLO также не включает Web Unlocker только
 из-за environment flag. Это защищает free tier от незаметного batch-расхода.
 Ночная сверка наличия ([NIGHTLY_STOCK_CHECK.md](NIGHTLY_STOCK_CHECK.md)) платные
-источники не открывает: FLO, Zara/Inditex и Akakçe стоят в `NIGHTLY_STOCK_CHECK_PAID_SOURCES`,
+источники не открывает: FLO, Zara/Inditex, Akakçe и Aloparça (с 25.11.2026 — через прокси, только
+сбор и проверка при открытии карточки) стоят в `NIGHTLY_STOCK_CHECK_PAID_SOURCES`,
 а настройки парсера с прокси останавливают источник до запроса. Там же — оценка
 стоимости, если владелец решит их включить.
 

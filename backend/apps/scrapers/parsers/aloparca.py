@@ -13,8 +13,12 @@
 адреса карточки) и ``?q=fren-diski`` (слова в адресе карточки). Каталог ~340 тыс.
 карточек: целиком не обходится, объём задаёт «Макс. товаров» задачи.
 
-Вежливый режим: один поток, не чаще запроса в 2,5 с, без прокси, честное имя робота.
+Вежливый режим: один поток, не чаще запроса в 2,5 с, честное имя робота.
 403 или проверка Cloudflare — остановка с понятной ошибкой, без повторов.
+
+Серверу прода сайт закрыт (дата-центр), поэтому с 25.11.2026 парсер ходит через
+обычный прокси, если в настройке стоит «Использовать прокси» (решение владельца).
+Сервис, решающий проверки (Web Unlocker), не используется; проверка — по-прежнему стоп.
 
 Решение владельца 24.11.2026 и риски (условия сайта запрещают копирование) —
 reports/auto-parts-sources-audit-2026-11-24.md.
@@ -34,6 +38,14 @@ from apps.catalog.utils.part_numbers import normalize_part_number
 from apps.http_errors import SourceRateLimitedError, raise_for_blocked_status
 
 from ..base.listing_snapshot import listing_fingerprint
+from ..base.offers import (
+    MalformedOfferResponse,
+    OfferCheckContext,
+    OfferCheckResult,
+    OfferNotFound,
+    result_from_scraped_product,
+    translate_offer_check_errors,
+)
 from ..base.scraper import (
     BaseScraper,
     CategoryPageNotFoundError,
@@ -266,11 +278,13 @@ class AloparcaParser(BaseScraper):
     RATE_LIMIT_WAITS = (60, 180)
     # Страница проверки Cloudflare вместо товара: её не обходим, а останавливаемся.
     CHALLENGE_MARKERS = ("challenge-platform", "cf-chl-", "Just a moment...")
+    # Фото (googlecdn.aloparca.com) серверу закрыты так же, как сайт: при включённом
+    # прокси конвейер медиа качает их через него и с этим же именем робота.
+    MEDIA_PROXY_USER_AGENT = BOT_USER_AGENT
     _request_lock = threading.Lock()
     _last_request_at = 0.0  # общий для процесса
 
     def __init__(self, base_url: str = "https://aloparca.com", **kwargs):
-        kwargs["use_proxy"] = False  # только прямые запросы (решение владельца)
         super().__init__(base_url=base_url, delay_range=(2.5, 4), **kwargs)
         self.user_agent = self.BOT_USER_AGENT
         self.default_headers = {
@@ -328,11 +342,12 @@ class AloparcaParser(BaseScraper):
                 time.sleep(wait)
             AloparcaParser._last_request_at = time.monotonic()
 
-    def _make_request(self, url: str, **kwargs) -> Optional[str]:
+    def _make_request(self, url: str, patient: bool = True, **kwargs) -> Optional[str]:
         """Страница сайта; None — 404/410 (карточку сняли).
 
         403 и страница проверки Cloudflare — ``ScraperAccessBlockedError`` сразу, без
-        повторов. 429/503 — два ожидания, затем ``SourceRateLimitedError``.
+        повторов. 429/503 — два ожидания, затем ``SourceRateLimitedError``;
+        ``patient=False`` (проверка при открытии карточки) — без ожиданий.
         """
         if not url.startswith(("http://", "https://")):
             url = urljoin(self.base_url + "/", url)
@@ -360,7 +375,7 @@ class AloparcaParser(BaseScraper):
                 )
             raise_for_blocked_status(status_code=response.status_code, url=str(response.url or url), source="Aloparça")
             if response.status_code in self.RATE_LIMIT_STATUSES:
-                if rate_limited >= len(self.RATE_LIMIT_WAITS):
+                if not patient or rate_limited >= len(self.RATE_LIMIT_WAITS):
                     raise SourceRateLimitedError(
                         source="Aloparça", status_code=response.status_code, url=url, attempts=rate_limited + 1,
                     )
@@ -549,6 +564,29 @@ class AloparcaParser(BaseScraper):
         if page is None:
             return None
         return self._build_product(page, url)
+
+    # --- проверка цены и наличия ---------------------------------------------
+
+    @translate_offer_check_errors
+    def check_offer(self, offer: OfferCheckContext) -> OfferCheckResult:
+        """Один запрос страницы сохранённой карточки: цена и «есть/нет».
+
+        404/410 — «не найден». Страница открылась, но номер товара другой — тоже
+        «не найден», чужой товар не подставляем. Нет блока данных — сбой формата.
+        """
+        if not self.is_product_url(offer.canonical_url):
+            raise OfferNotFound(offer.canonical_url)
+        url = offer.canonical_url.split("?")[0].split("#")[0]
+        page = self._make_request(url, patient=False)
+        if page is None:
+            raise OfferNotFound(offer.canonical_url)
+        try:
+            product = self._build_product(page, url)
+        except AloparcaFormatError as exc:
+            raise MalformedOfferResponse(str(exc)) from exc
+        if offer.external_product_id and product.external_id != offer.external_product_id:
+            raise OfferNotFound(offer.canonical_url)
+        return result_from_scraped_product(offer, product)
 
     def _build_product(self, page: str, url: str) -> ScrapedProduct:
         snapshots = self._snapshots(page)

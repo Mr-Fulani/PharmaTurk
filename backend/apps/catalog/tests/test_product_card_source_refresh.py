@@ -702,6 +702,36 @@ def test_flo_card_fetch_maps_clean_page_without_product_to_not_found(
     assert error.value.retryable is False
 
 
+def test_aloparca_removed_card_is_not_found(monkeypatch):
+    """Парсер Aloparça отдаёт None только на 404/410: карточку сняли, а не «сбой источника»."""
+
+    class RemovedAloparcaParser:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def parse_product_detail(self, url):
+            return None
+
+    target = SimpleNamespace(
+        parser_key="aloparca",
+        parser_class=RemovedAloparcaParser,
+        offer=SimpleNamespace(canonical_url="https://aloparca.com/product/removed", parser_config={}),
+    )
+    service = ProductCardSourceRefreshService()
+    monkeypatch.setattr(service, "_scraper_config", lambda _offer: None)
+
+    with pytest.raises(ProductCardRefreshError) as error:
+        service._fetch_product(target)
+
+    assert error.value.code == "source_not_found" and error.value.retryable is False
+
+
 def test_card_fetch_maps_typed_gone_response_to_not_found(monkeypatch):
     class GoneZaraParser:
         def __init__(self, **_kwargs):
