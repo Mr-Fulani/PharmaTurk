@@ -6898,6 +6898,7 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
     _variant_image_serializer_class = SportsVariantImageSerializer
     variants = SportsVariantSerializer(many=True, read_only=True)
+    translations = SportsProductTranslationSerializer(many=True, read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
@@ -6923,7 +6924,7 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'sport_type', 'equipment_type', 'product_type',
-            'dynamic_attributes',
+            'translations', 'dynamic_attributes',
             'price_formatted', 'old_price_formatted',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -7147,6 +7148,7 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     """Списковый сериализатор для автозапчастей."""
     _variant_image_serializer_class = AutoPartVariantImageSerializer
     variants = AutoPartVariantSerializer(many=True, read_only=True)
+    translations = AutoPartProductTranslationSerializer(many=True, read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
@@ -7171,7 +7173,7 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'part_number', 'car_brand', 'car_model', 'product_type',
-            'dynamic_attributes',
+            'translations', 'dynamic_attributes',
             'price_formatted', 'old_price_formatted',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',

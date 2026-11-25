@@ -5279,7 +5279,7 @@ class IncenseProductViewSet(_SimpleDomainViewSet):
 class SportsProductViewSet(_SimpleDomainViewSet):
     """API для работы со спорттоварами."""
     queryset = SportsProduct.objects.filter(is_active=True).prefetch_related(
-        'variants', 'variants__images',
+        'variants', 'variants__images', 'translations',
     ).order_by('-created_at')
     serializer_class = SportsProductSerializer
 
@@ -5324,7 +5324,7 @@ class SportsProductViewSet(_SimpleDomainViewSet):
 class AutoPartProductViewSet(_SimpleDomainViewSet):
     """API для работы с автозапчастями."""
     queryset = AutoPartProduct.objects.filter(is_active=True).prefetch_related(
-        'variants', 'variants__images',
+        'variants', 'variants__images', 'translations',
     ).order_by('-created_at')
     serializer_class = AutoPartProductSerializer
 
