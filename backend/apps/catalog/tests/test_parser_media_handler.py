@@ -152,3 +152,17 @@ def test_configured_user_agent_is_kept(monkeypatch):
     assert [sent.get("user-agent") for _, sent in requests] == ["Custom/1.0", "Custom/1.0"]
     assert all("User-Agent" not in sent for _, sent in requests)
     assert all(sent["Referer"] == "https://x.example" for _, sent in requests)
+
+
+def test_proxy_is_passed_to_the_client_only_on_request(monkeypatch, settings):
+    """Платный прокси — только для источников, чьи фото серверу закрыты (Aloparça)."""
+    settings.SCRAPER_PROXY_URL = "http://user:secret@brd.superproxy.io:44445"
+    settings.SCRAPER_PROXY_CA_BUNDLE = "/app/certs/ca.crt"
+
+    assert parser_media_handler._proxy_client_options(False) == {}
+    assert parser_media_handler._proxy_client_options(True) == {
+        "proxy": settings.SCRAPER_PROXY_URL,
+        "verify": "/app/certs/ca.crt",
+    }
+    settings.SCRAPER_PROXY_URL = ""
+    assert parser_media_handler._proxy_client_options(True) == {}

@@ -8,6 +8,7 @@ from io import BytesIO
 from urllib.parse import urlparse
 
 import httpx
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
@@ -34,6 +35,15 @@ def _with_default_user_agent(headers):
     if not any(str(key).lower() == "user-agent" for key in result):
         result["User-Agent"] = DEFAULT_MEDIA_USER_AGENT
     return result
+
+
+def _proxy_client_options(use_proxy) -> dict:
+    """Параметры httpx-клиента для платного прокси парсеров; TLS сверяется с его CA."""
+    proxy_url = str(getattr(settings, "SCRAPER_PROXY_URL", "") or "").strip() if use_proxy else ""
+    if not proxy_url:
+        return {}
+    ca_bundle = str(getattr(settings, "SCRAPER_PROXY_CA_BUNDLE", "") or "").strip()
+    return {"proxy": proxy_url, "verify": ca_bundle or True}
 
 
 def source_url_fingerprint(url) -> str:
@@ -110,6 +120,7 @@ def download_and_optimize_parsed_media(
     headers=None,
     timeout=15,
     sub_folder=None,
+    use_proxy=False,
 ):
     """
     Универсальная функция для загрузки медиа (фото/видео/гиф) из любого парсера.
@@ -122,6 +133,8 @@ def download_and_optimize_parsed_media(
         headers: Опциональные HTTP-заголовки (без User-Agent — DEFAULT_MEDIA_USER_AGENT)
         timeout: Таймаут запроса в секундах
         sub_folder: Опциональная подпапка для сохранения (например, имя аккаунта)
+        use_proxy: Качать через SCRAPER_PROXY_URL (платно) — только источники, чьи фото
+            серверу закрыты, и только при включённом прокси в настройке парсера
 
     Returns:
         str: URL загруженного файла в R2/локальном хранилище или пустая строка при ошибке
@@ -132,10 +145,11 @@ def download_and_optimize_parsed_media(
     try:
         parser_slug = parser_name.lower().replace(" ", "-").replace("_", "-")
         headers = _with_default_user_agent(headers)
+        client_options = _proxy_client_options(use_proxy)
 
         content = None
         content_type = ""
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        with httpx.Client(timeout=timeout, follow_redirects=True, **client_options) as client:
             head_response = client.head(url, headers=headers or {})
             if head_response.status_code < 400:
                 content_type = (head_response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -181,7 +195,7 @@ def download_and_optimize_parsed_media(
                 return default_storage.url(path)
 
         if content is None:
-            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            with httpx.Client(timeout=timeout, follow_redirects=True, **client_options) as client:
                 content, _ = _get_media_bytes(client, url, headers)
                 if content is None:
                     logger.warning("Failed to download parsed media (blocked?): %s", url)

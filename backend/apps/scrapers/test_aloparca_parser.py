@@ -15,6 +15,13 @@ import pytest
 
 from apps.catalog.models import AutoPartFitment, AutoPartNumber, AutoPartProduct, Category, Product
 from apps.http_errors import SourceRateLimitedError
+from apps.scrapers.base.offers import (
+    MalformedOfferResponse,
+    OfferAvailability,
+    OfferCheckContext,
+    OfferNotFound,
+    OfferSourceUnavailable,
+)
 from apps.scrapers.base.scraper import (
     CategoryPageNotFoundError,
     ScraperAccessBlockedError,
@@ -363,8 +370,97 @@ def test_requests_are_direct_honest_and_throttled(no_waits):
     assert len(no_waits) == 1 and 2.4 < no_waits[0] <= 2.5
 
 
-def test_proxy_setting_is_ignored():
-    assert AloparcaParser(use_proxy=True).use_proxy is False
+def test_proxy_is_used_only_when_the_config_enables_it(settings, tmp_path):
+    """Серверу сайт закрыт: прокси включает галочка настройки, имя робота остаётся честным."""
+    ca_bundle = tmp_path / "ca.crt"
+    ca_bundle.write_text("test")
+    settings.SCRAPER_PROXY_URL = "http://user:secret@brd.superproxy.io:44445"
+    settings.SCRAPER_PROXY_CA_BUNDLE = str(ca_bundle)
+
+    with patch("apps.scrapers.base.scraper.httpx.Client") as client:
+        assert not AloparcaParser().proxy_url
+        parser = AloparcaParser(use_proxy=True)
+
+    assert parser.proxy_url == settings.SCRAPER_PROXY_URL
+    assert client.call_args.kwargs["proxy"] == settings.SCRAPER_PROXY_URL
+    assert parser.default_headers["User-Agent"].startswith("MudarobaBot/")
+    assert AloparcaParser.MEDIA_PROXY_USER_AGENT == AloparcaParser.BOT_USER_AGENT
+
+
+# --- проверка цены и наличия при открытии карточки ----------------------------------
+
+
+def _offer(path, external_id=""):
+    return OfferCheckContext(canonical_url=SITE + path, external_product_id=external_id)
+
+
+def test_offer_check_reads_price_and_stock_with_one_request():
+    parser = _parser()
+
+    in_stock = parser.check_offer(_offer(BOSCH, "aloparca-6674"))
+    sold_out = parser.check_offer(_offer(LAMBDA))
+
+    assert parser.requested == [BOSCH, LAMBDA]
+    assert in_stock.availability_status == OfferAvailability.IN_STOCK
+    assert in_stock.source_price is not None and in_stock.source_currency == "TRY"
+    assert in_stock.canonical_url == SITE + BOSCH and in_stock.stock_quantity is None
+    assert sold_out.availability_status == OfferAvailability.OUT_OF_STOCK
+    assert float(sold_out.source_price) == 989.5
+
+
+def test_offer_check_removed_or_other_card_is_not_found():
+    with pytest.raises(OfferNotFound):
+        _parser().check_offer(_offer("/product/snyat-s-prodazhi"))
+    with pytest.raises(OfferNotFound):
+        _parser().check_offer(_offer(BOSCH, "aloparca-1"))
+    with pytest.raises(OfferNotFound):
+        _parser().check_offer(OfferCheckContext(canonical_url=SITEMAP))
+
+
+def test_offer_check_layout_change_is_malformed_not_out_of_stock():
+    parser = _parser({BOSCH: "<html><body>Yeni tasarım</body></html>"})
+
+    with pytest.raises(MalformedOfferResponse):
+        parser.check_offer(_offer(BOSCH))
+
+
+def test_offer_check_does_not_wait_or_pass_a_cloudflare_check(no_waits):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(429 if len(calls) == 1 else 403, headers={"cf-mitigated": "challenge"})
+
+    with pytest.raises(OfferSourceUnavailable):  # 429: без ожиданий 60 и 180 с
+        _http_parser(handler).check_offer(_offer(BOSCH))
+    with pytest.raises(OfferSourceUnavailable):  # проверка Cloudflare: стоп
+        _http_parser(handler).check_offer(_offer(BOSCH))
+    assert len(calls) == 2 and [w for w in no_waits if w >= 60] == []
+
+
+def test_nightly_check_skips_the_paid_source(settings):
+    assert "aloparca" in settings.NIGHTLY_STOCK_CHECK_PAID_SOURCES
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("use_proxy", [True, False])
+def test_photos_go_through_the_proxy_only_when_enabled(use_proxy):
+    """Фото закрыты серверу так же, как сайт: с галочкой — через прокси, без неё — напрямую."""
+    root = Category.objects.create(name="Автозапчасти", slug="auto-parts")
+    config = ScraperConfig.objects.create(
+        name="aloparca-media", parser_class="aloparca", base_url=SITE, default_category=root, use_proxy=use_proxy,
+    )
+    session = ScrapingSession.objects.create(scraper_config=config, status="running", start_url=SITEMAP)
+    photo = "https://googlecdn.aloparca.com/yedek-parca-resimleri/30/a.webp"
+
+    with patch("apps.scrapers.services.download_and_optimize_parsed_media", return_value="https://cdn/x.webp") as load:
+        ScraperIntegrationService()._download_parsed_media_urls(
+            session, source_urls=[photo], parser_name="aloparca", product_id="aloparca-1", sub_folder=None,
+        )
+
+    assert load.call_args.kwargs.get("use_proxy", False) is use_proxy
+    agent = (load.call_args.kwargs["headers"] or {}).get("User-Agent", "")
+    assert agent.startswith("MudarobaBot/") is use_proxy
 
 
 @pytest.mark.parametrize(
@@ -501,6 +597,32 @@ def test_new_part_is_queued_for_its_card_once(auto_parts_session, django_capture
     kwargs = submit.call_args.kwargs["kwargs"]
     assert (kwargs["product_id"], kwargs["processing_type"], kwargs["auto_apply"]) == (product.pk, "full", True)
     assert product.ai_logs.count() == 1
+
+
+def test_card_open_refresh_updates_price_and_stock_but_not_the_card_text(auto_parts_session, settings):
+    """Открытие карточки: с источника — только цена и наличие, название и таблицы не трогаются."""
+    from apps.catalog.services.product_card_source_refresh import ProductCardSourceRefreshService, RefreshTarget
+
+    settings.SOURCE_OFFER_RECORDING_ENABLED = True
+    session, service = auto_parts_session
+    service._process_scraped_products(session, [_parser().parse_product_detail(SITE + BOSCH)])
+    part = AutoPartProduct.objects.get()
+    AutoPartProduct.objects.filter(pk=part.pk).update(name="Свеча зажигания Bosch 0242236596")
+    fitments = part.fitments.count()
+    fresh = _parser().parse_product_detail(SITE + BOSCH)
+    fresh.price, fresh.is_available, fresh.stock_quantity = fresh.price + 100, False, 0
+    refresh = ProductCardSourceRefreshService()
+    target = RefreshTarget(
+        product=part.base_product, offer=part.base_product.source_offers.get(), parser_class=AloparcaParser,
+    )
+
+    refresh._reconcile(target, fresh, refresh._validated_snapshots(target, fresh))
+
+    part.refresh_from_db()
+    product = Product.objects.get(pk=part.base_product_id)
+    assert float(part.price) == float(product.price) == fresh.price
+    assert part.is_available is False and product.is_available is False
+    assert part.name == "Свеча зажигания Bosch 0242236596" and part.fitments.count() == fitments
 
 
 def test_category_route_wins_over_root_task(db):

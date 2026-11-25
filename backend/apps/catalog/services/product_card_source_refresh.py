@@ -585,10 +585,11 @@ class ProductCardSourceRefreshService:
                 )
             result = result[0]
         if not isinstance(result, ScrapedProduct):
-            if target.parser_key == "flo":
+            if target.parser_key in {"flo", "aloparca"}:
                 # Browser rendering already rejects FLO's CAPTCHA page. A clean
                 # site response without productDetail is the category redirect
-                # FLO uses for a removed product URL.
+                # FLO uses for a removed product URL. Aloparça: парсер отдаёт None
+                # только на 404/410 (карточку сняли); проверка Cloudflare — исключение.
                 raise ProductCardRefreshError(
                     "source_not_found",
                     "Supplier product was not found",

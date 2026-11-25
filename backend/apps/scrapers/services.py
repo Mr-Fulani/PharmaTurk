@@ -2201,6 +2201,14 @@ class ScraperIntegrationService:
         headers = dict(scraper_config.headers or {})
         if scraper_config.user_agent:
             headers.setdefault("User-Agent", scraper_config.user_agent)
+        # Фото источника серверу закрыты (Aloparça): при включённом прокси — через него.
+        media_proxy_user_agent = (
+            getattr(get_parser(scraper_config.parser_class), "MEDIA_PROXY_USER_AGENT", "")
+            if getattr(scraper_config, "use_proxy", False)
+            else ""
+        )
+        if media_proxy_user_agent:
+            headers.setdefault("User-Agent", media_proxy_user_agent)
         out: List[str] = []
         url_map: Dict[str, str] = {}
         reuse_map = reuse_map or {}
@@ -2227,6 +2235,7 @@ class ScraperIntegrationService:
                 index=index,
                 headers=headers or None,
                 sub_folder=sub_folder,
+                **({"use_proxy": True} if media_proxy_user_agent else {}),
             )
             if r2_url:
                 out.append(r2_url)
