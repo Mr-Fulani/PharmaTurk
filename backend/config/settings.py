@@ -811,6 +811,17 @@ PRODUCT_CARD_SOURCE_REFRESH_LOCK_SECONDS = env.int(
 PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS = env.json(
     "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", default={"flo": 86400, "aloparca": 86400}
 )
+# Платный прокси (оплата за объём): карточка, успешно проверенная за это окно, при
+# открытии повторно не запрашивается. Только карточка: Список заявки эти источники
+# по-прежнему проверяет заново (docs/PAID_WEB_ACCESS_SERVICES.md).
+PRODUCT_CARD_SOURCE_REFRESH_CARD_FRESHNESS_SECONDS = env.json(
+    "PRODUCT_CARD_SOURCE_REFRESH_CARD_FRESHNESS_SECONDS",
+    default={
+        "zara": 86400, "bershka": 86400, "pullandbear": 86400, "massimodutti": 86400, "akakce": 86400,
+    },
+)
+# Сообщение владельцу в Telegram, когда Bright Data отклоняет запросы (не чаще раза в сутки).
+PAID_ACCESS_ALERT_ENABLED = env.bool("PAID_ACCESS_ALERT_ENABLED", default=True)
 PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO = env.float(
     "PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO", default=0.05
 )

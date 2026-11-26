@@ -1474,10 +1474,12 @@ def test_paid_flo_card_skips_source_request_after_recent_successful_check(
 ):
     """FLO идёт через платный Web Unlocker (лимит зоны в месяц).
 
-    Недавно успешно проверенный URL повторно не запрашиваем. Окно задано только
-    для FLO: Zara, проверенная минуту назад, обновляется при каждом открытии.
+    Недавно успешно проверенный URL повторно не запрашиваем. Источник без окна
+    (здесь Zara с выключенным окном карточки), проверенный минуту назад,
+    обновляется при каждом открытии.
     """
     settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = ["zara", "flo"]
+    settings.PRODUCT_CARD_SOURCE_REFRESH_CARD_FRESHNESS_SECONDS = {}
     zara_product, *_ = parsed_clothing
     flo_product = Product.objects.create(
         name="FLO shoe",
@@ -1538,6 +1540,52 @@ def test_paid_flo_card_skips_source_request_after_recent_successful_check(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("source", ["zara", "bershka", "pullandbear", "massimodutti", "akakce"])
+def test_proxy_source_card_is_requested_once_a_day_by_default(
+    parsed_clothing,
+    settings,
+    monkeypatch,
+    source,
+):
+    """Платный прокси (оплата за объём): карточку, успешно проверенную за сутки,
+    открытие не запрашивает заново. Ошибка окно не открывает."""
+    from apps.catalog.services.source_offer_verification import paid_freshness_seconds
+
+    settings.PRODUCT_CARD_SOURCE_REFRESH_SOURCES = [source]
+    product, *_ = parsed_clothing
+    product.source_offers.update(parser_key=source)
+    # Тест про окно, а не про доверие к адресу: парсер источника считаем найденным.
+    monkeypatch.setattr(
+        SourceOfferVerificationService, "_trusted_parser_class", lambda self, offer: DummyZaraParser
+    )
+    monkeypatch.setattr(
+        SourceOfferVerificationService, "supports_offer", lambda self, offer: True
+    )
+    calls = []
+    monkeypatch.setattr(
+        "apps.catalog.tasks.refresh_product_card_source_task.apply_async",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    service = ProductCardSourceRefreshService()
+
+    # Ни разу не проверялась — запрос идёт.
+    assert service.request_refresh(product)["status"] == "pending"
+    assert len(calls) == 1
+    cache.clear()
+
+    product.source_offers.update(last_successful_check_at=timezone.now() - timedelta(hours=23))
+    assert service.request_refresh(product)["status"] == "idle"
+    assert len(calls) == 1
+
+    product.source_offers.update(last_successful_check_at=timezone.now() - timedelta(hours=25))
+    assert service.request_refresh(product)["status"] == "pending"
+    assert len(calls) == 2
+
+    # Список заявки эти источники проверяет заново: его окно не меняется.
+    assert paid_freshness_seconds(source) == 0
+
+
+@pytest.mark.django_db
 def test_paid_access_unavailable_keeps_card_and_asks_manager_for_price(
     parsed_clothing,
     monkeypatch,
@@ -1559,6 +1607,11 @@ def test_paid_access_unavailable_keeps_card_and_asks_manager_for_price(
         )
 
     monkeypatch.setattr(service, "_fetch_product", refused)
+    alerts = []
+    monkeypatch.setattr(
+        "apps.monitoring.watchdog.send_admin_telegram_notification",
+        lambda text: alerts.append(text) or True,
+    )
 
     for _ in range(6):
         result = service.run(product.pk)
@@ -1568,6 +1621,8 @@ def test_paid_access_unavailable_keeps_card_and_asks_manager_for_price(
     assert result["retryable"] is False
     assert result["message"] == "Цена будет уточнена менеджером."
     assert SourceOfferVerificationService().circuit_is_open("zara") is False
+    # Владельцу — одно сообщение на шесть отказов подряд.
+    assert len(alerts) == 1 and "Bright Data" in alerts[0]
     product.refresh_from_db()
     domain.refresh_from_db()
     assert product.price == domain.price == Decimal("100.00")

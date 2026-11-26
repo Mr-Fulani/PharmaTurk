@@ -54,6 +54,8 @@
 | `PRODUCT_CARD_SOURCE_REFRESH_TIMEOUT_SECONDS` | `12` | таймаут одного запроса к поставщику, 1..30 с; для FLO при включённом Web Unlocker вместо него `FLO_WEB_UNLOCKER_TIMEOUT_SECONDS` |
 | `PRODUCT_CARD_SOURCE_REFRESH_MAX_RETRIES` | `1` | повторы запроса внутри одного refresh, 0..2; слот concurrency держится `timeout × (retries + 1) + 5` с |
 | `PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS` | `{"flo":86400}` | JSON по источникам, до 7 суток: предложение, успешно проверенное в этом окне, не запрашивается повторно ни на карточке, ни в корзине (бережёт лимит платного FLO); у остальных источников 0 |
+| `PRODUCT_CARD_SOURCE_REFRESH_CARD_FRESHNESS_SECONDS` | `{"zara":86400,"bershka":86400,"pullandbear":86400,"massimodutti":86400,"akakce":86400}` | то же окно, но только для карточки (источники через платный прокси); Список заявки эти источники проверяет заново |
+| `PAID_ACCESS_ALERT_ENABLED` | `true` | сообщение в чат ошибок, когда Bright Data отклоняет запросы; не чаще раза в сутки (`docs/PAID_WEB_ACCESS_SERVICES.md`) |
 | `PRODUCT_CARD_SOURCE_REFRESH_MIN_PRICE_RATIO` | `0.05` | anomaly guard: новая цена дешевле `0.05 ×` текущей цены товара (или цены offer в той же валюте) отклоняется как `invalid_payload` и не сохраняется; 0.001..1 |
 | `PRODUCT_CARD_SOURCE_REFRESH_MAX_PRICE_RATIO` | `20` | та же проверка сверху: новая цена дороже `20 ×` текущей отклоняется; 1..1000 |
 | `SCRAPER_PRICE_REFRESH_DISABLED_SOURCES` | `instagram` | повторный полный импорт может обновить контент/медиа, но не сохранённую цену |

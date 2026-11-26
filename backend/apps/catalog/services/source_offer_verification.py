@@ -18,6 +18,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.catalog.models import ProductSourceOffer
+from apps.monitoring.paid_access_alert import report_paid_access_failure
 from apps.scrapers.base.offers import (
     MalformedOfferResponse,
     OfferAvailability,
@@ -72,14 +73,18 @@ def manual_only_source_keys() -> set[str]:
     }
 
 
-def paid_freshness_seconds(parser_key: str) -> int:
+def paid_freshness_seconds(
+    parser_key: str,
+    setting_name: str = "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS",
+) -> int:
     """Окно свежести платного источника из PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS.
 
     Задано только FLO (Web Unlocker с месячным лимитом зоны): успешно
     проверенное предложение не запрашивается повторно ни при открытии
     карточки, ни при открытии корзины. Остальные источники — 0.
+    ``setting_name`` — другая настройка того же вида (окно только для карточки).
     """
-    mapping = getattr(settings, "PRODUCT_CARD_SOURCE_REFRESH_FRESHNESS_SECONDS", {}) or {}
+    mapping = getattr(settings, setting_name, {}) or {}
     if not isinstance(mapping, dict):
         return 0
     normalized_key = str(parser_key or "").strip().casefold()
@@ -582,6 +587,7 @@ class SourceOfferVerificationService:
                 return result
             except OfferVerificationError as exc:
                 last_error = exc
+                report_paid_access_failure(parser_key, exc)
                 if not exc.error.retryable or attempt >= retries:
                     raise
                 if backoff > 0:
