@@ -109,8 +109,13 @@ function App({ Component, pageProps }: AppProps) {
       <ThemeProvider>
         <Head>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <link rel="icon" type="image/png" href="/favicon.png" />
-          <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          {/* Значок — печать с пальмой (docs/images/logo-seal). ?v= меняется вместе с файлами: браузер хранит
+              значок вкладки отдельно от кэша страниц и по прежнему адресу показывал бы старый. .ico (16, 32, 48) —
+              вкладка, 120 px — размер, который просит Яндекс, 192 px — Google и Android. */}
+          <link rel="icon" href="/favicon.ico?v=seal" sizes="16x16 32x32 48x48" />
+          <link rel="icon" type="image/png" sizes="120x120" href="/favicon.png?v=seal" />
+          <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=seal" />
+          <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=seal" />
         </Head>
 
         {/* Яндекс.Метрика — загружается только при наличии согласия */}
