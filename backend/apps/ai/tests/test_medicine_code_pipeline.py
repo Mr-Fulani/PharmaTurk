@@ -1709,6 +1709,32 @@ def test_restricted_medicine_without_code_title_gets_seo_without_delivery(monkey
     assert "Import to Russia is restricted." in content["en"]["seo_description"]
 
 
+def test_seo_restricted_countries_follow_the_barcode_list(monkeypatch):
+    """Псевдоэфедрин: Россия в SEO только у товаров из списка штрихкодов (решение владельца 27.11.2026)."""
+    from apps.catalog import controlled_substances
+
+    entry = {"inn_ru": "псевдоэфедрин", "countries": {
+        "KZ": {"list": "ПП РК № 470"}, "RU": {"list": "ПП 681", "only_barcodes": ["111"]},
+    }}
+    monkeypatch.setattr(controlled_substances, "_index", lambda: {"psodoefedrin hidroklorur": entry})
+    generator = _generator(None)
+    descriptions = {}
+    for barcode in ("111", "222"):
+        input_data = {"name": "X COLD 30 MG KARISIM", "active_ingredient": "Psodoefedrin Hidroklorur",
+                      "prescription_type": "Beyaz Reçete", "barcode": barcode}
+        code_fields = generator._build_medicine_code_fields(input_data, allow_llm=False)
+        content = {
+            "ru": {"generated_title": "X COLD 30 мг, смесь", "seo_title": "X COLD 30 мг из Турции",
+                   "seo_description": "X COLD из Турции."},
+            "en": {"generated_title": "X COLD 30 mg, mixture", "seo_title": "X COLD 30 mg from Turkey",
+                   "seo_description": "X COLD from Turkey."},
+        }
+        generator._apply_medicine_code_fields(content, input_data, code_fields)
+        descriptions[barcode] = content["ru"]["seo_description"]
+    assert "Ввоз в Россию и Казахстан ограничен." in descriptions["111"]
+    assert "Ввоз в Казахстан ограничен." in descriptions["222"] and "Росси" not in descriptions["222"]
+
+
 def test_meaningless_special_notes_are_not_accepted_and_rx_is_neutral():
     log, facts = _process(
         "Birlikte kullanılmamalıdır. Dikkatli olunmalıdır.",
