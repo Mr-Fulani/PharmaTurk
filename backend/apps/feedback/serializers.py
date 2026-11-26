@@ -129,7 +129,7 @@ class TestimonialSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
             'is_buyer',
         )
 
-    def get_is_buyer(self, obj):
+    def get_is_buyer(self, obj) -> bool:
         """Отзыв пришёл по личной ссылке из заявки. Сама заявка наружу не отдаётся."""
         return obj.order_id is not None
 
