@@ -97,7 +97,7 @@ def test_new_order_keyboard_has_next_steps_and_links():
 
     assert _texts(keyboard) == [
         "🛠 Взять в работу", "💬 Написали клиенту", "💰 Назвали цену", "❌ Не состоялась",
-        "🗂 Открыть в админке", "✍️ Написать в WhatsApp",
+        "📝 Сообщение клиенту", "🗂 Открыть в админке", "✍️ Написать в WhatsApp",
     ]
     links = {b["text"]: b["url"] for row in keyboard["inline_keyboard"] for b in row if "url" in b}
     assert links["🗂 Открыть в админке"] == f"https://mudaroba.test/admin/orders/order/{order.id}/change/"
@@ -110,15 +110,15 @@ def test_new_order_keyboard_has_next_steps_and_links():
         (PS.IN_PROGRESS, ["💬 Написали клиенту", "💰 Назвали цену", "🤝 Клиент согласен", "❌ Не состоялась", "↩️ Вернуть: Новая"]),
         (PS.PRICE_SENT, ["🤝 Клиент согласен", "✅ Оплачено", "❌ Не состоялась", "↩️ Вернуть: Написали клиенту"]),
         (PS.PAID, ["📦 Отправлено", "❌ Не состоялась", "↩️ Вернуть: Клиент согласен"]),
-        (PS.SHIPPED, ["🏁 Завершена", "❌ Не состоялась", "↩️ Вернуть: Оплачено"]),
-        (PS.DONE, ["↩️ Вернуть: Отправлено"]),
+        (PS.SHIPPED, ["🏁 Завершена", "❌ Не состоялась", "↩️ Вернуть: Оплачено", "✉️ Сообщение: заказ отправлен"]),
+        (PS.DONE, ["↩️ Вернуть: Отправлено", "⭐ Попросить отзыв"]),
         (PS.CANCELLED, ["↩️ Вернуть в работу"]),
     ],
 )
 def test_keyboard_follows_status(status, expected):
     keyboard = order_keyboard(_order(processing_status=status, contact_phone="", contact_channel=""))
 
-    assert _texts(keyboard) == [*expected, "🗂 Открыть в админке"]
+    assert _texts(keyboard) == [*expected, "📝 Сообщение клиенту", "🗂 Открыть в админке"]
 
 
 def test_no_write_button_without_usable_contact():
@@ -128,7 +128,7 @@ def test_no_write_button_without_usable_contact():
 def test_callback_data_fits_telegram_limit():
     order = _order(processing_status=PS.WAITING_CLIENT)
     order.id = 99_999_999_999
-    for menu in ("main", "fail"):
+    for menu in ("main", "fail", "msg"):
         for row in order_keyboard(order, menu=menu)["inline_keyboard"]:
             for button in row:
                 assert len(button.get("callback_data", "").encode()) <= 64
@@ -331,7 +331,7 @@ def test_sourcing_notification_carries_buttons_of_its_order():
     keyboard = post.call_args.kwargs["json"]["reply_markup"]
     assert _texts(keyboard) == [
         "🛠 Взять в работу", "💬 Написали клиенту", "💰 Назвали цену", "❌ Не состоялась",
-        "🗂 Открыть в админке", "✍️ Написать в Telegram",
+        "📝 Сообщение клиенту", "🗂 Открыть в админке", "✍️ Написать в Telegram",
     ]
     assert _data(keyboard, "🛠 Взять в работу") == f"o:{order.id}:new:s:in_progress"
 

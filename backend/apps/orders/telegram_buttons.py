@@ -15,8 +15,9 @@ from django.utils import timezone
 
 from apps.users.models import User
 
+from .client_messages import render_client_message
 from .contacts import contact_links, contact_message, order_item_names
-from .models import Order
+from .models import ClientMessageTemplate, Order
 from .processing import change_processing
 from .tasks import _admin_url, _orders_chat_id, _tg_html_escape, _tg_length
 
@@ -58,6 +59,13 @@ NEXT = {
     PS.PAID: [PS.SHIPPED],
     PS.SHIPPED: [PS.DONE],
 }
+# Быстрый путь к готовому сообщению клиенту после шага
+MESSAGE_HINTS = {
+    PS.SHIPPED: ("✉️ Сообщение: заказ отправлен", ClientMessageTemplate.Key.SHIPPED),
+    PS.DONE: ("⭐ Попросить отзыв", ClientMessageTemplate.Key.REVIEW),
+}
+# Ссылка на чат с подставленным текстом не длиннее этого; иначе — просто чат, текст копируется
+CHAT_LINK_LIMIT = 2000
 # Разметка, которую ставит шаблон уведомления: при правке текста её нужно вернуть Telegram
 KEPT_ENTITIES = ("bold", "italic", "code", "pre", "text_link")
 
@@ -76,19 +84,19 @@ def _link_buttons(order, item_names=None) -> list:
     sourcing = order.kind == Order.Kind.SOURCING
     if item_names is None:
         item_names = [] if sourcing else order_item_names(order.items.all(), order.locale)
-    hrefs = dict(
-        contact_links(
-            order.contact_channel, order.contact_username, order.contact_phone, "",
-            contact_message(order.contact_name, order.number, item_names, sourcing=sourcing, locale=order.locale), "",
-        )
-    )
+    text = contact_message(order.contact_name, order.number, item_names, sourcing=sourcing, locale=order.locale)
     buttons = [{"text": "🗂 Открыть в админке", "url": _admin_url("admin:orders_order_change", order.id)}]
-    buttons += [
-        {"text": f"✍️ Написать в {label}", "url": hrefs[key]}
-        for key, label in (("telegram", "Telegram"), ("whatsapp", "WhatsApp"))
+    return buttons + _chat_buttons(order, text, "✍️ Написать в {}")
+
+
+def _chat_buttons(order, text: str, label: str, with_text: bool = True) -> list:
+    """Кнопки-ссылки на чат с клиентом в Telegram и WhatsApp; with_text — с набранным в чате текстом."""
+    hrefs = dict(contact_links(order.contact_channel, order.contact_username, order.contact_phone, "", text, ""))
+    return [
+        {"text": label.format(name), "url": hrefs[key] if with_text else hrefs[key].split("?text=")[0]}
+        for key, name in (("telegram", "Telegram"), ("whatsapp", "WhatsApp"))
         if key in hrefs
     ]
-    return buttons
 
 
 def order_keyboard(order, menu: str = "main", item_names=None) -> dict:
@@ -100,6 +108,13 @@ def order_keyboard(order, menu: str = "main", item_names=None) -> dict:
             {"text": _short(label), "callback_data": f"{data}:r:{value}"}
             for value, label in Order.FailReason.choices
         ])
+        rows.append([{"text": "↩️ Назад", "callback_data": f"{data}:b"}])
+        return {"inline_keyboard": rows}
+    if menu == "msg":
+        rows = [
+            [{"text": str(label), "callback_data": f"{data}:t:{value}"}]
+            for value, label in ClientMessageTemplate.Key.choices
+        ]
         rows.append([{"text": "↩️ Назад", "callback_data": f"{data}:b"}])
         return {"inline_keyboard": rows}
 
@@ -114,6 +129,10 @@ def order_keyboard(order, menu: str = "main", item_names=None) -> dict:
             previous = CHAIN[CHAIN.index(status) - 1]
             extra.append({"text": f"↩️ Вернуть: {_short(previous.label)}", "callback_data": f"{data}:s:{previous}"})
     rows.append(extra)
+    if status in MESSAGE_HINTS:
+        hint, key = MESSAGE_HINTS[status]
+        rows.append([{"text": hint, "callback_data": f"{data}:t:{key}"}])
+    rows.append([{"text": "📝 Сообщение клиенту", "callback_data": f"{data}:m"}])
     rows += _rows(_link_buttons(order, item_names))
     return {"inline_keyboard": rows}
 
@@ -240,6 +259,9 @@ def _press(callback: dict) -> tuple[str, bool]:
     message = callback.get("message") or {}
     target = {"chat_id": (message.get("chat") or {}).get("id"), "message_id": message.get("message_id")}
 
+    if action == "t":
+        # Готовое сообщение от отметки не зависит: его можно взять и со старого уведомления
+        return _send_client_message(message, order, value)
     if order.processing_status != shown:
         # Кнопки устарели: отметку уже сменили (другой администратор или админка)
         _refresh_message(message, order)
@@ -247,6 +269,9 @@ def _press(callback: dict) -> tuple[str, bool]:
     if action == "f":
         _call("editMessageReplyMarkup", reply_markup=order_keyboard(order, menu="fail"), **target)
         return "Выберите причину", False
+    if action == "m":
+        _call("editMessageReplyMarkup", reply_markup=order_keyboard(order, menu="msg"), **target)
+        return "Выберите сообщение", False
     if action == "b":
         _call("editMessageReplyMarkup", reply_markup=order_keyboard(order), **target)
         return "", False
@@ -266,6 +291,38 @@ def _press(callback: dict) -> tuple[str, bool]:
     order.refresh_from_db()
     _refresh_message(message, order)
     return f"Статус: {_status_text(order)}", False
+
+
+def _send_client_message(message: dict, order, key: str) -> tuple[str, bool]:
+    """Присылает в тот же чат готовый текст для клиента. Клиенту бот не пишет: отправляет менеджер.
+
+    Текст идёт блоком <pre>: нажатие копирует его целиком и без разметки. Кнопки открывают
+    чат с клиентом — с уже набранным текстом, если ссылка с ним не слишком длинная.
+    """
+    text = render_client_message(key, order) if key in ClientMessageTemplate.Key.values else ""
+    if not text:
+        return "Текст этого сообщения не найден. Проверьте «Готовые сообщения клиенту» в админке.", True
+    h = _tg_html_escape
+    payload = {
+        "chat_id": (message.get("chat") or {}).get("id"),
+        "text": (
+            f"✉️ <b>{h(ClientMessageTemplate.Key(key).label)}</b> · заявка №{h(order.number)}\n"
+            "Нажмите на текст — он скопируется. Клиенту его отправляете вы, бот клиенту не пишет.\n\n"
+            f"<pre>{h(text)}</pre>"
+        ),
+        "parse_mode": "HTML",
+        "link_preview_options": {"is_disabled": True},
+        "reply_parameters": {"message_id": message.get("message_id"), "allow_sending_without_reply": True},
+    }
+    label = "💬 Открыть чат в {}"
+    buttons = _chat_buttons(order, text, label)
+    fits = all(len(button["url"]) <= CHAT_LINK_LIMIT for button in buttons)
+    plain = _chat_buttons(order, text, label, with_text=False)
+    sent = buttons and fits and _call("sendMessage", reply_markup={"inline_keyboard": _rows(buttons)}, **payload)
+    if not sent:
+        # Длинный текст в ссылку не помещается (или Telegram её не принял): открывается просто чат
+        sent = _call("sendMessage", **(payload | ({"reply_markup": {"inline_keyboard": _rows(plain)}} if plain else {})))
+    return ("Текст готов — он ниже.", False) if sent else ("Не получилось отправить текст. Попробуйте ещё раз.", True)
 
 
 def handle_callback(callback: dict) -> bool:
