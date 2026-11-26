@@ -5,6 +5,7 @@
 """
 
 import re
+import secrets
 
 from django.conf import settings
 
@@ -19,7 +20,8 @@ PLACEHOLDERS_HELP = (
     "{номер} — номер заявки; {товары} — блок «Ваш заказ» со строкой на каждый товар "
     "(у заявки «Найти товар» пропускается); {сумма товаров}, {сумма доставки}, {итого} — суммы "
     "из заявки в её валюте (если доставка не посчитана — «[впишите сумму доставки]», а «Итого» "
-    "с пометкой «без доставки»); {ссылка на отзывы} — страница отзывов на сайте. "
+    "с пометкой «без доставки»); {ссылка на отзывы} — личная ссылка клиента на форму отзыва "
+    "(отзыв по ней получит отметку «Покупатель»). "
     "Незнакомая подстановка остаётся в тексте как есть."
 )
 WORDS = {
@@ -79,8 +81,19 @@ def _values(order) -> dict:
         "сумма_товаров": money(order.subtotal_amount) if order.subtotal_amount else words["fill"],
         "сумма_доставки": money(order.shipping_amount) if order.shipping_amount else words["fill_shipping"],
         "итого": total,
-        "ссылка_на_отзывы": f"{settings.SITE_URL}{'/en' if locale == 'en' else ''}/testimonials?action=add",
     }
+
+
+def review_link(order) -> str:
+    """Личная ссылка на форму отзыва: случайный ключ заявки, без её номера и данных клиента."""
+    if not order.review_token:
+        # update с условием: два нажатия подряд не заменят уже выданный ключ
+        Order.objects.filter(pk=order.pk, review_token__isnull=True).update(
+            review_token=secrets.token_urlsafe(16)
+        )
+        order.refresh_from_db(fields=["review_token"])
+    prefix = "/en" if message_locale(order.locale) == "en" else ""
+    return f"{settings.SITE_URL}{prefix}/testimonials?action=add&k={order.review_token}"
 
 
 def render_client_message(key: str, order) -> str:
@@ -92,8 +105,14 @@ def render_client_message(key: str, order) -> str:
     values = _values(order)
     if not values["имя"]:
         text = _NAME_RE.sub("", text)
-    text = _PLACEHOLDER_RE.sub(
-        lambda match: values.get("_".join(match.group(1).lower().split()), match.group(0)), text,
-    )
+
+    def _fill(match):
+        key = "_".join(match.group(1).lower().split())
+        # Ключ ссылки заводим, только если шаблон её действительно использует
+        if key == "ссылка_на_отзывы":
+            return review_link(order)
+        return values.get(key, match.group(0))
+
+    text = _PLACEHOLDER_RE.sub(_fill, text)
     # Пропущенный блок товаров не должен оставлять дыру из пустых строк
     return re.sub(r"\n{3,}", "\n\n", text).strip()

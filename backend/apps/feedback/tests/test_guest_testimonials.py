@@ -186,3 +186,104 @@ def test_settings_admin_is_single_record_with_only_the_switch():
     TestimonialSectionSettings.load()
     assert model_admin.has_add_permission(None) is False
     assert model_admin.has_delete_permission(None) is False
+
+
+# --- Отметка «Покупатель»: отзыв по личной ссылке из заявки -----------------
+
+def _order(number, token):
+    from apps.orders.models import Order
+
+    return Order.objects.create(number=number, review_token=token, contact_name="Иван Петров")
+
+
+@pytest.mark.django_db
+def test_valid_key_marks_testimonial_as_buyer_but_still_needs_approval():
+    order = _order("M-1", "key-" + "a" * 18)
+    client = APIClient()
+
+    response = client.post(URL, payload(order_key=order.review_token), format="json")
+
+    testimonial = Testimonial.objects.get()
+    assert (testimonial.order, testimonial.is_active) == (order, False)
+    assert response.json()["is_buyer"] is True
+    assert client.get(URL).json() == []
+
+    Testimonial.objects.update(is_active=True)
+    listed = client.get(URL).json()[0]
+    feed = client.get("/api/feedback/reviews-feed/").json()["results"][0]
+    assert listed["is_buyer"] is True and feed["is_buyer"] is True
+    # Заявка, её номер и суммы наружу не отдаются
+    for public in (listed, feed):
+        assert "order" not in public and "M-1" not in str(public)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("key", ("wrong-key", "", "x" * 500))
+def test_wrong_key_is_accepted_as_ordinary_guest_testimonial(key):
+    _order("M-1", "key-" + "a" * 18)
+
+    response = APIClient().post(URL, payload(order_key=key), format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert Testimonial.objects.get().order is None
+    assert response.json()["is_buyer"] is False
+
+
+@pytest.mark.django_db
+def test_second_testimonial_by_same_link_gets_no_mark_and_other_order_is_separate():
+    first, second = _order("M-1", "key-" + "a" * 18), _order("M-2", "key-" + "b" * 18)
+    client = APIClient()
+
+    for key in (first.review_token, first.review_token):
+        assert client.post(URL, payload(order_key=key), format="json").status_code == 201
+    other = APIClient().post(
+        URL, payload(order_key=second.review_token), format="json", HTTP_X_REAL_IP="203.0.113.9"
+    )
+
+    assert [t.order for t in Testimonial.objects.order_by("pk")] == [first, None, second]
+    assert other.json()["is_buyer"] is True
+
+
+@pytest.mark.django_db
+def test_signed_in_user_with_link_also_gets_buyer_mark():
+    order = _order("M-1", "key-" + "a" * 18)
+    user = User.objects.create_user(email="u@example.com", username="someone", password="password")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    client.post(URL, payload(order_key=order.review_token), format="json")
+
+    testimonial = Testimonial.objects.get()
+    assert (testimonial.user, testimonial.order) == (user, order)
+
+
+@pytest.mark.django_db
+def test_admin_shows_buyer_order_link_and_filter():
+    from apps.feedback.admin import BuyerFilter, TestimonialAdmin
+
+    order = _order("M-1", "key-" + "a" * 18)
+    buyer = Testimonial.objects.create(author_name="Иван", text="Спасибо", order=order)
+    plain = Testimonial.objects.create(author_name="Гость", text="Спасибо")
+    model_admin = TestimonialAdmin(Testimonial, admin.site)
+
+    assert f"/admin/orders/order/{order.pk}/change/" in model_admin.buyer_order(buyer)
+    assert "Заявка M-1" in model_admin.buyer_order(buyer)
+    assert model_admin.buyer_order(plain) == "—"
+    for value, expected in (("yes", [buyer]), ("no", [plain])):
+        buyer_filter = BuyerFilter(None, {"buyer": [value]}, Testimonial, model_admin)
+        assert list(buyer_filter.queryset(None, Testimonial.objects.all())) == expected
+
+
+@pytest.mark.django_db
+def test_owner_notification_names_buyer_order(settings):
+    settings.TELEGRAM_BOT_TOKEN = "token"
+    settings.TELEGRAM_CHAT_ID = "42"
+    testimonial = Testimonial.objects.create(
+        author_name="Иван", text="Спасибо", order=_order("M-1", "key-" + "a" * 18)
+    )
+
+    with patch("apps.feedback.tasks.requests.post") as post:
+        post.return_value.ok = True
+        notify_admin_testimonial(testimonial.pk)
+
+    assert "покупатель, заявка M-1" in post.call_args.kwargs["json"]["text"]

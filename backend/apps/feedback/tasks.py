@@ -50,7 +50,7 @@ def notify_admin_testimonial(testimonial_id: int):
     """Сообщает в чат владельца, что отзыв о сервисе ждёт проверки."""
     from .models import Testimonial
 
-    testimonial = Testimonial.objects.select_related("user").filter(pk=testimonial_id).first()
+    testimonial = Testimonial.objects.select_related("user", "order").filter(pk=testimonial_id).first()
     if not testimonial:
         return
     token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
@@ -61,6 +61,8 @@ def notify_admin_testimonial(testimonial_id: int):
 
     admin_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/admin/feedback/testimonial/{testimonial.pk}/change/"
     author = f"@{testimonial.user.username}" if testimonial.user else "без входа в аккаунт"
+    if testimonial.order:
+        author += f", покупатель, заявка {testimonial.order.number}"
     rating = f"{testimonial.rating}/5" if testimonial.rating else "—"
     text = (
         "💬 Новый отзыв о сервисе ждёт проверки\n"

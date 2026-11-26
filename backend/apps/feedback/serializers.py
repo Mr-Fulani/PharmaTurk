@@ -112,6 +112,7 @@ class TestimonialSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
     media = TestimonialMediaSerializer(many=True, read_only=True)
     user_id = serializers.SerializerMethodField()
     user_username = serializers.SerializerMethodField()
+    is_buyer = serializers.SerializerMethodField()
 
     class Meta:
         model = Testimonial
@@ -125,8 +126,13 @@ class TestimonialSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
             'created_at',
             'user_id',
             'user_username',
+            'is_buyer',
         )
-    
+
+    def get_is_buyer(self, obj) -> bool:
+        """Отзыв пришёл по личной ссылке из заявки. Сама заявка наружу не отдаётся."""
+        return obj.order_id is not None
+
     def get_user_id(self, obj):
         """Возвращает ID пользователя, если он привязан к отзыву."""
         user = getattr(obj, 'user', None)
@@ -285,6 +291,7 @@ class ReviewFeedItemSerializer(serializers.Serializer):
     product_name = serializers.CharField(allow_null=True)
     subject_image_url = serializers.CharField(allow_null=True)
     homepage_priority = serializers.IntegerField()
+    is_buyer = serializers.BooleanField()
 
 
 class ReviewFeedPageSerializer(serializers.Serializer):

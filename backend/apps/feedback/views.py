@@ -225,6 +225,17 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception("Could not enqueue testimonial notification")
 
+    @staticmethod
+    def _buyer_order(request):
+        """Заявка по ключу из личной ссылки. Неверный ключ или уже есть отзыв по этой
+        заявке — None: отзыв принимается как обычный, без отметки «Покупатель»."""
+        from apps.orders.models import Order
+
+        key = str(request.data.get('order_key') or '').strip()
+        if not key or len(key) > 43:
+            return None
+        return Order.objects.filter(review_token=key, testimonials__isnull=True).first()
+
     def _create_guest(self, request):
         """Отзыв без входа: без файлов, на сайте появится после проверки."""
         # Поле-ловушка: человек его не видит, робот заполняет. Отвечаем «принято», но не сохраняем.
@@ -232,7 +243,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_201_CREATED)
         serializer = GuestTestimonialCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        testimonial = serializer.save(is_active=False)
+        testimonial = serializer.save(is_active=False, order=self._buyer_order(request))
         self._notify_admin(testimonial.pk)
         return Response(
             TestimonialSerializer(testimonial, context={'request': request}).data,
@@ -324,6 +335,10 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         # Создаем отзыв
         testimonial = serializer.create(validated_data)
+        order = self._buyer_order(request)
+        if order:
+            testimonial.order = order
+            testimonial.save(update_fields=['order'])
         self._notify_admin(testimonial.pk)
         
         # Возвращаем созданный отзыв

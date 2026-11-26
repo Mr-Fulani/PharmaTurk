@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.db import transaction
+from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
 from .models import (
@@ -47,10 +48,23 @@ class TestimonialMediaInline(admin.TabularInline):
     ordering = ('order',)
 
 
+class BuyerFilter(admin.SimpleListFilter):
+    title = 'Отметка «Покупатель»'
+    parameter_name = 'buyer'
+
+    def lookups(self, request, model_admin):
+        return (('yes', 'С отметкой (по ссылке из заявки)'), ('no', 'Без отметки'))
+
+    def queryset(self, request, queryset):
+        if self.value() in ('yes', 'no'):
+            return queryset.filter(order__isnull=self.value() == 'no')
+        return queryset
+
+
 @admin.register(Testimonial)
 class TestimonialAdmin(admin.ModelAdmin):
-    list_display = ('author_name', 'user', 'rating', 'media_count', 'is_active', 'created_at')
-    list_filter = ('is_active', 'rating', 'created_at', 'user')
+    list_display = ('author_name', 'user', 'buyer_order', 'rating', 'media_count', 'is_active', 'created_at')
+    list_filter = ('is_active', BuyerFilter, 'rating', 'created_at', 'user')
     search_fields = ('author_name', 'text', 'user__username', 'user__email')
     list_editable = ('is_active',)
     date_hierarchy = 'created_at'
@@ -70,9 +84,21 @@ class TestimonialAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('user', 'author_name', 'author_avatar', 'text', 'rating', 'is_active')
+            'fields': ('user', 'author_name', 'author_avatar', 'text', 'rating', 'is_active', 'buyer_order')
         }),
     )
+    readonly_fields = ('buyer_order',)
+    list_select_related = ('user', 'order')
+
+    @admin.display(description='Покупатель (заявка)')
+    def buyer_order(self, obj):
+        if not obj.order_id:
+            return '—'
+        return format_html(
+            '<a href="{}">🛒 Заявка {}</a>',
+            reverse('admin:orders_order_change', args=[obj.order_id]),
+            obj.order.number,
+        )
 
     def media_count(self, obj):
         """Показывает количество медиа элементов."""
