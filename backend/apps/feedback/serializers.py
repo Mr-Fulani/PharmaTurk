@@ -146,10 +146,23 @@ class TestimonialSerializer(TranslatedFieldsMixin, serializers.ModelSerializer):
         return _resolve_file_url(getattr(obj, 'author_avatar', None), request)
 
 
+TESTIMONIAL_TEXT_MAX_LENGTH = 3000
+
+
+class GuestTestimonialCreateSerializer(serializers.ModelSerializer):
+    """Отзыв без входа в аккаунт: имя, текст, оценка. Файлы от гостей не принимаем."""
+    text = serializers.CharField(max_length=TESTIMONIAL_TEXT_MAX_LENGTH)
+
+    class Meta:
+        model = Testimonial
+        fields = ('author_name', 'text', 'rating')
+
+
 class TestimonialCreateSerializer(serializers.ModelSerializer):
     """
     Сериализатор для создания отзывов с медиа.
     """
+    text = serializers.CharField(max_length=TESTIMONIAL_TEXT_MAX_LENGTH)
     media_items = serializers.ListField(
         child=serializers.DictField(),
         required=False,

@@ -10,6 +10,7 @@ from .models import (
     ProductReviewTranslation,
     Testimonial,
     TestimonialMedia,
+    TestimonialSectionSettings,
     TestimonialTranslation,
 )
 from .tasks import notify_review_author_reply
@@ -55,7 +56,18 @@ class TestimonialAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     inlines = [TestimonialTranslationInline, TestimonialMediaInline]
     raw_id_fields = ('user',)  # Для удобного выбора пользователя
-    
+    actions = ('publish_testimonials', 'unpublish_testimonials')
+
+    @admin.action(description='Опубликовать выбранные отзывы')
+    def publish_testimonials(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f'Опубликовано отзывов: {updated}')
+
+    @admin.action(description='Снять выбранные отзывы с публикации')
+    def unpublish_testimonials(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f'Снято с публикации: {updated}')
+
     fieldsets = (
         ('Основная информация', {
             'fields': ('user', 'author_name', 'author_avatar', 'text', 'rating', 'is_active')
@@ -67,6 +79,18 @@ class TestimonialAdmin(admin.ModelAdmin):
         count = obj.media.count()
         return count if count > 0 else '—'
     media_count.short_description = 'Медиа'
+
+
+@admin.register(TestimonialSectionSettings)
+class TestimonialSectionSettingsAdmin(admin.ModelAdmin):
+    """Одна запись: выключатель отзывов без входа в аккаунт."""
+    fields = ('allow_guest_testimonials',)
+
+    def has_add_permission(self, request):
+        return not TestimonialSectionSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(TestimonialMedia)
