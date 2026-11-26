@@ -34,6 +34,7 @@ from .models import (
     CartItem,
     CartReminderLog,
     CartReminderSettings,
+    ClientMessageTemplate,
     Order,
     OrderItem,
     PromoCode,
@@ -181,6 +182,33 @@ class CartReminderSettingsAdmin(admin.ModelAdmin):
                 }, messages.ERROR)
         obj = CartReminderSettings.load()
         return redirect(reverse("admin:orders_cartremindersettings_change", args=[obj.pk]))
+
+
+@admin.register(ClientMessageTemplate)
+class ClientMessageTemplateAdmin(admin.ModelAdmin):
+    """Тексты, которые бот показывает менеджеру по кнопке «Сообщение клиенту» под заявкой в Telegram."""
+
+    list_display = ("__str__", "updated_at")
+    readonly_fields = ("key", "updated_at")
+
+    def get_fieldsets(self, request, obj=None):
+        from .client_messages import PLACEHOLDERS_HELP
+
+        return (
+            (None, {
+                "fields": ("key", "text_ru", "text_en", "updated_at"),
+                "description": _(
+                    "Бот клиенту ничего не отправляет: он показывает этот текст менеджеру в чате заявок, "
+                    "менеджер копирует и отправляет сам. Что можно вставить в текст: "
+                ) + PLACEHOLDERS_HELP,
+            }),
+        )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CartReminderLog)

@@ -985,3 +985,32 @@ class CartReminderLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_step_display()} · {self.get_channel_display()} · {self.recipient}"
+
+
+class ClientMessageTemplate(models.Model):
+    """Готовое сообщение клиенту: менеджер получает текст кнопкой под заявкой в Telegram и отправляет сам.
+
+    Описание и подстановки — docs/ORDER_PROCESSING.md, сборка текста — apps/orders/client_messages.py.
+    """
+
+    class Key(models.TextChoices):
+        DELIVERY_AIR = "air", _("Как проходит доставка — авиа")
+        DELIVERY_GROUND = "ground", _("Как проходит доставка — наземная")
+        SHIPPED = "shipped", _("Заказ отправлен")
+        REVIEW = "review", _("Просьба об отзыве")
+
+    key = models.CharField(_("Сообщение"), max_length=16, choices=Key.choices, unique=True)
+    text_ru = models.TextField(_("Текст по-русски"))
+    text_en = models.TextField(
+        _("Текст по-английски"), blank=True,
+        help_text=_("Для заявок, оформленных на английской версии сайта. Пусто — уйдёт русский текст."),
+    )
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("✉️ Готовое сообщение клиенту")
+        verbose_name_plural = _("🛒 Заказы — Готовые сообщения клиенту")
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return self.get_key_display()
