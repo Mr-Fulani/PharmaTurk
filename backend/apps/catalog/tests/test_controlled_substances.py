@@ -138,7 +138,8 @@ def test_half_cyrillic_abbreviation_is_not_untranslated_turkish():
 
 @pytest.mark.parametrize("active, countries", [
     # Пропуски на проде 13.11.2026: новые написания и вещества вне справочника.
-    ("Klorfeniramin Maleat Psodoefedrin Hidroklorur Parasetamol", "KZ,RU,UZ"),
+    # Псевдоэфедрин: Россия снята решением владельца 27.11.2026 (остаётся по списку штрихкодов).
+    ("Klorfeniramin Maleat Psodoefedrin Hidroklorur Parasetamol", "KZ,UZ"),
     ("Ephedrine Hydrochloride", "KZ,RU,UZ"),
     ("Clonidine Hydrochloride", "KZ,RU,UZ"),
     ("Testosteron", "KZ,RU,UZ"),
@@ -155,3 +156,24 @@ def test_half_cyrillic_abbreviation_is_not_untranslated_turkish():
 def test_reference_covers_spellings_seen_in_catalog(monkeypatch, active, countries):
     monkeypatch.setattr(controlled_substances, "_index", REAL_INDEX)
     assert controlled_substances.restrictions(active)[0] == countries
+
+
+def test_pseudoephedrine_keeps_russia_only_for_listed_barcodes(monkeypatch):
+    # Решение владельца 27.11.2026: для России псевдоэфедрин не ограничен; Россия осталась у товаров,
+    # где доля по данным каталога может быть 10 % и выше (SUDAFED 60 мг, таблетки).
+    monkeypatch.setattr(controlled_substances, "_index", REAL_INDEX)
+    tylol_hot = "Klorfeniramin Maleat + Psodoefedrin Hidroklorur + Parasetamol"
+    countries, note = controlled_substances.restrictions(tylol_hot, "8699540250116")
+    assert countries == "KZ,UZ" and "Россия" not in note and "Казахстан" in note and "Узбекистан" in note
+    assert controlled_substances.restrictions("Psodoefedrin Hidroklorur", "8699522015269")[0] == "KZ,RU,UZ"
+    # Другое вещество с запретом в России оставляет её в метке (TYLOL COLD с декстрометорфаном).
+    tylol_cold = "Klorfeniramin Maleat + Dekstrometorfan Hidrobromur + Psodoefedrin Hidroklorur + Parasetamol"
+    countries, note = controlled_substances.restrictions(tylol_cold, "8699540570801")
+    assert countries == "KZ,RU,UZ" and "Россия: псевдоэфедрин" not in note
+    # Эфедрин решение не затрагивает.
+    assert controlled_substances.restrictions("Efedrin Hidroklorur")[0] == "KZ,RU,UZ"
+
+    medicine = _medicine("sudafed-60", "Psodoefedrin Hidroklorur", atc="R01BA02", barcode="8699522015269")
+    assert medicine.import_restricted_countries == "KZ,RU,UZ"
+    medicine = _medicine("tylol-hot", tylol_hot, atc="R05X", barcode="8699540250116")
+    assert medicine.import_restricted_countries == "KZ,UZ"

@@ -30,8 +30,12 @@ def _index() -> dict[str, dict]:
     return {key: entry for entry in entries for key in entry.get("tr_keys") or []}
 
 
-def restrictions(active_ingredient: Any) -> tuple[str, str]:
-    """(страны через запятую, основание построчно) для действующего вещества; ("", "") — нет."""
+def restrictions(active_ingredient: Any, barcode: Any = "") -> tuple[str, str]:
+    """(страны через запятую, основание построчно) для действующего вещества; ("", "") — нет.
+
+    Страна со списком only_barcodes относится только к товарам с этими штрихкодами
+    (псевдоэфедрин в России, решение владельца 27.11.2026 — docs/CONTROLLED_SUBSTANCES.md).
+    """
     from apps.ai.services.medicine_memory import split_inn
 
     countries: set[str] = set()
@@ -41,6 +45,8 @@ def restrictions(active_ingredient: Any) -> tuple[str, str]:
         if not entry:
             continue
         for country, info in sorted((entry.get("countries") or {}).items()):
+            if "only_barcodes" in info and str(barcode or "") not in info["only_barcodes"]:
+                continue
             countries.add(country)
             notes.append(f"{COUNTRY_NAMES.get(country, country)}: {entry.get('inn_ru') or key} — {info.get('list', '')}")
     return ",".join(sorted(countries)), "\n".join(dict.fromkeys(notes))
@@ -48,7 +54,7 @@ def restrictions(active_ingredient: Any) -> tuple[str, str]:
 
 def refresh_medicine(medicine) -> bool:
     """Пересчитать отметку у лекарства (без save()); True — изменилась."""
-    countries, note = restrictions(getattr(medicine, "active_ingredient", ""))
+    countries, note = restrictions(getattr(medicine, "active_ingredient", ""), getattr(medicine, "barcode", ""))
     changed = (medicine.import_restricted_countries, medicine.import_restriction_note) != (countries, note)
     medicine.import_restricted_countries, medicine.import_restriction_note = countries, note
     return changed

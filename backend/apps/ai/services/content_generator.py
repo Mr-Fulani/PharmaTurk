@@ -1586,7 +1586,7 @@ class ContentGenerator:
         if not brand_ru and ru.get("active_ingredient") and not paragraph_brand(name, input_data.get("active_ingredient")):
             brand_ru = title_inn(ru["active_ingredient"]).capitalize()
         storage = self._build_medicine_source_sections(input_data).get("storage_conditions")
-        restricted = country_codes(restrictions(input_data.get("active_ingredient"))[0])
+        restricted = country_codes(restrictions(input_data.get("active_ingredient"), input_data.get("barcode"))[0])
         return build_medicine_seo(
             title, brand, brand_ru, inn, prescription_kind(en.get("prescription_type")), needs_cold_chain(storage),
             restricted,
@@ -1603,7 +1603,7 @@ class ContentGenerator:
 
         has_special_notes = bool(meaningful_special_notes(input_data.get("special_notes")))
         prescription = prescription_kind(code_fields["en"].get("prescription_type"))
-        restricted = country_codes(restrictions(input_data.get("active_ingredient"))[0])
+        restricted = country_codes(restrictions(input_data.get("active_ingredient"), input_data.get("barcode"))[0])
         for locale in ("ru", "en"):
             payload = content.get(locale)
             if not isinstance(payload, dict):

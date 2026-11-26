@@ -24,7 +24,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         stats, examples = Counter(), []
         for medicine in MedicineProduct.objects.only(
-            "id", "name", "active_ingredient", "import_restricted_countries", "import_restriction_note"
+            "id", "name", "active_ingredient", "barcode", "import_restricted_countries", "import_restriction_note"
         ).iterator(chunk_size=1000):
             if not refresh_medicine(medicine):
                 continue
