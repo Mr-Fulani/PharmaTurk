@@ -85,7 +85,7 @@ export function buildArticleSchemas({ siteUrl, siteName, localePrefix, article, 
       mainEntityOfPage: url,
       url,
       author: { '@type': 'Organization', name: siteName, url: siteUrl },
-      publisher: { '@type': 'Organization', name: siteName, logo: { '@type': 'ImageObject', url: `${siteUrl}/logo.svg` } },
+      publisher: { '@type': 'Organization', name: siteName, logo: { '@type': 'ImageObject', url: `${siteUrl}/logo-512.png` } },
     },
     buildBreadcrumbSchema({ siteUrl, localePrefix, breadcrumbs }),
   ]

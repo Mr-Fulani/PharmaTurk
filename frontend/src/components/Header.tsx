@@ -19,6 +19,9 @@ import { resolveMediaUrl } from '../lib/media'
 import { defaultCurrencyForLocale } from '../lib/requestCurrency'
 import { setPendingVisualFile } from '../lib/pendingVisualSearch'
 import { CameraIcon } from '@heroicons/react/24/outline'
+import sealLogo38 from '../assets/logo/seal-38.webp'
+import sealLogo76 from '../assets/logo/seal-76.webp'
+import sealLogo114 from '../assets/logo/seal-114.webp'
 
 const loadMotionFeatures = () => import('../lib/motionFeatures').then((mod) => mod.default)
 
@@ -306,17 +309,19 @@ export default function Header() {
               transition={{ duration: 0.28, ease: 'easeOut' }}
               className="relative z-10 flex-shrink-0"
             >
-              <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={`${isDark ? 'drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'drop-shadow-md'}`}>
-                <defs>
-                  <linearGradient id={`logo-grad-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                    <stop stopColor={isDark ? "#ef4444" : "#dc2626"} />
-                    <stop offset="1" stopColor={isDark ? "#b91c1c" : "#991b1b"} />
-                  </linearGradient>
-                </defs>
-                <rect width="40" height="40" rx="10" fill={`url(#logo-grad-${isDark ? 'dark' : 'light'})`} />
-                <path d="M7 23H10.5L14.5 13L20 28L25.5 13L29.5 23H33" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="33" cy="23" r="1.5" fill="white" />
-              </svg>
+              {/* Знак — сургучная печать с пальмой (docs/images/logo-seal). 38 px круга на глаз равны прежнему
+                  квадрату 34 px. Размеры заданы — вёрстка не сдвигается; файлы под обычный, двойной и тройной
+                  экран лежат в /_next/static с кэшем на год, оптимизатор next/image их не пережимает. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={sealLogo38.src}
+                srcSet={`${sealLogo38.src} 1x, ${sealLogo76.src} 2x, ${sealLogo114.src} 3x`}
+                width={38}
+                height={38}
+                alt=""
+                decoding="async"
+                className={`${isDark ? 'drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'drop-shadow-md'}`}
+              />
             </m.div>
             <m.div
               initial={false}
