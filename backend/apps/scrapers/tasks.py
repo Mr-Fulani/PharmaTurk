@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.catalog.utils.parsed_originals import collect_parsed_originals
 from apps.http_errors import SourceRateLimitedError
+from apps.monitoring.paid_access_alert import report_paid_access_failure
 
 from .base.offers import OfferVerificationError
 from .base.scraper import CategoryPageNotFoundError, ScraperAccessBlockedError
@@ -696,6 +697,7 @@ def run_instagram_scraper_task(
         )
         return {"status": "paused", "message": error_msg}
     except Exception as exc:
+        report_paid_access_failure("сбор Instagram из админки", exc)
         error_msg = _proxy_account_error_message(exc) or str(exc)
         updated = InstagramScraperTask.objects.filter(
             id=task.id,
@@ -1224,6 +1226,7 @@ def run_scraper_task(
     except ScraperAccessBlockedError as e:
         # Постоянный 401/403 не исправится повтором через минуту: показываем причину
         # администратору и не создаём лишнюю нагрузку на защищаемый сайт.
+        report_paid_access_failure(f"сбор из админки, парсер №{scraper_config_id}", e)
         error_msg = str(e) if isinstance(e, SourceRateLimitedError) else f"Доступ к источнику отклонён: {e}"
         logger.error(error_msg)
         if site_task:
@@ -1241,6 +1244,7 @@ def run_scraper_task(
         }
 
     except Exception as e:
+        report_paid_access_failure(f"сбор из админки, парсер №{scraper_config_id}", e)
         proxy_error_msg = _proxy_account_error_message(e)
         error_msg = proxy_error_msg or f"Ошибка в задаче парсинга: {e}"
         logger.error(error_msg)

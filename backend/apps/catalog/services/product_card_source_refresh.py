@@ -40,6 +40,7 @@ from apps.catalog.utils.manufacturer_brands import OTHER_BRAND_SLUG
 from apps.catalog.utils.default_variant import default_fashion_variant
 from apps.catalog.utils.old_price import source_old_price
 from apps.http_errors import PaidAccessUnavailableError
+from apps.monitoring.paid_access_alert import report_paid_access_failure
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.base.offers import OfferGone, OfferNotFound
 from apps.scrapers.models import ScraperConfig
@@ -374,7 +375,11 @@ class ProductCardSourceRefreshService:
         лимитом зоны). Успешную проверку пишут обновление карточки, полный
         импорт и проверка корзины; ошибки окно не открывают.
         """
-        window = paid_freshness_seconds(target.parser_key)
+        # Второе окно — только для карточки: источники через платный прокси,
+        # которые Список заявки по-прежнему проверяет заново.
+        window = paid_freshness_seconds(target.parser_key) or paid_freshness_seconds(
+            target.parser_key, "PRODUCT_CARD_SOURCE_REFRESH_CARD_FRESHNESS_SECONDS"
+        )
         if not window:
             return None
         checked_at = (
@@ -1581,6 +1586,7 @@ class ProductCardSourceRefreshService:
             self._observe(target.parser_key, "succeeded", started_at)
             return succeeded
         except ProductCardRefreshError as exc:
+            report_paid_access_failure(target.parser_key, exc)
             unavailable_changes: dict[str, int] | None = None
             if exc.code == "source_not_found":
                 try:

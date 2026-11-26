@@ -14,6 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.catalog.models import ProductSourceOffer, SupplementProduct
+from apps.monitoring.paid_access_alert import report_paid_access_failure
 from apps.scrapers.base.offers import OfferCheckContext, OfferVerificationError
 from apps.scrapers.models import ScraperConfig
 from apps.scrapers.parsers.akakce import (
@@ -459,6 +460,7 @@ class SupplementStockDiscoveryService:
                     )
                     snapshot = parser.inspect_offer(context)
         except OfferVerificationError as exc:
+            report_paid_access_failure(SOURCE_KEY, exc)
             if persist:
                 self._remember_negative(
                     supplement,
