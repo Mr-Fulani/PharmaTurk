@@ -121,12 +121,19 @@ def generate_telegram_sync_token(user: User) -> str:
 def process_telegram_webhook(payload: dict) -> bool:
     """Обрабатывает входящий вебхук от Telegram бота"""
     try:
+        # Кнопки под заявкой в чате заявок и команда /orders
+        from apps.orders import telegram_buttons
+
         callback = payload.get('callback_query')
         if callback:
+            if str(callback.get('data') or '').startswith((telegram_buttons.CALLBACK_PREFIX, telegram_buttons.LIST_PREFIX)):
+                return telegram_buttons.handle_callback(callback)
             return _process_cart_reminders_callback(callback)
 
         message = payload.get('message', {})
         text = message.get('text', '').strip()
+        if text.split('@', 1)[0].lower() in telegram_buttons.ORDERS_COMMANDS:
+            return telegram_buttons.handle_orders_command(message)
         if text.split('@', 1)[0].lower() in CART_REMINDERS_STOP_COMMANDS:
             return _process_cart_reminders_stop(message)
         logger.info(
