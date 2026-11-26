@@ -15,7 +15,13 @@ import os
 import uuid
 from api.authentication import JWTSafeAuthentication
 from apps.settings.models import HomeBlock
-from .models import ProductQuestion, ProductReview, ProductReviewMedia, Testimonial
+from .models import (
+    ProductQuestion,
+    ProductReview,
+    ProductReviewMedia,
+    Testimonial,
+    TestimonialSectionSettings,
+)
 from .review_policy import can_user_review
 from .serializers import (
     ProductReviewSerializer,
@@ -24,12 +30,17 @@ from .serializers import (
     ProductQuestionWriteSerializer,
     TestimonialSerializer,
     TestimonialCreateSerializer,
+    GuestTestimonialCreateSerializer,
     ReviewFeedPageSerializer,
     TestimonialSectionSettingsSerializer,
 )
 from .pagination import ReviewFeedPagination
 from .review_feed import build_review_feed_rows, serialize_review_feed_page
-from .tasks import notify_admin_product_question, notify_admin_product_review
+from .tasks import (
+    notify_admin_product_question,
+    notify_admin_product_review,
+    notify_admin_testimonial,
+)
 from .throttles import PRODUCT_FEEDBACK_WRITE_THROTTLES, TESTIMONIAL_CREATE_THROTTLES
 
 logger = logging.getLogger(__name__)
@@ -164,10 +175,14 @@ class TestimonialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Разрешения для разных действий."""
+        if self.action == 'create':
+            # Гость может оставить отзыв, пока это не выключено в настройках отзывов.
+            if TestimonialSectionSettings.load().allow_guest_testimonials:
+                return [AllowAny()]
+            return [IsAuthenticated()]
         permission_class = {
             'list': AllowAny,
             'retrieve': AllowAny,
-            'create': IsAuthenticated,
         }.get(self.action, IsAdminUser)
         return [permission_class()]
 
@@ -198,8 +213,31 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         """Возвращает queryset с prefetch для медиа и select_related для пользователя."""
         return super().get_queryset().select_related('user').prefetch_related('media', 'translations')
 
+    @staticmethod
+    def _notify_admin(testimonial_id):
+        try:
+            notify_admin_testimonial.delay(testimonial_id)
+        except Exception:
+            logger.exception("Could not enqueue testimonial notification")
+
+    def _create_guest(self, request):
+        """Отзыв без входа: без файлов, на сайте появится после проверки."""
+        # Поле-ловушка: человек его не видит, робот заполняет. Отвечаем «принято», но не сохраняем.
+        if str(request.data.get('website') or '').strip():
+            return Response(status=status.HTTP_201_CREATED)
+        serializer = GuestTestimonialCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        testimonial = serializer.save(is_active=False)
+        self._notify_admin(testimonial.pk)
+        return Response(
+            TestimonialSerializer(testimonial, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     def create(self, request, *args, **kwargs):
         """Создание нового отзыва с медиа."""
+        if not request.user.is_authenticated:
+            return self._create_guest(request)
         if Testimonial.objects.filter(user=request.user).count() >= 3:
             return Response(
                 {'detail': 'Для одного пользователя разрешено не более трёх отзывов'},
@@ -281,6 +319,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         # Создаем отзыв
         testimonial = serializer.create(validated_data)
+        self._notify_admin(testimonial.pk)
         
         # Возвращаем созданный отзыв
         response_serializer = TestimonialSerializer(testimonial, context={'request': request})

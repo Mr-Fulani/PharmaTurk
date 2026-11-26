@@ -29,6 +29,7 @@ ANON_CAPABLE = [
     VisualSearchUserThrottle,
     RecommendationAnonThrottle,
     RecommendationUserThrottle,
+    *TESTIMONIAL_CREATE_THROTTLES,
 ]
 
 
@@ -55,7 +56,7 @@ def test_anonymous_limit_ignores_client_supplied_forwarded_for(throttle_class):
 
 
 def test_every_limit_counts_in_its_own_bucket():
-    classes = ANON_CAPABLE + TESTIMONIAL_CREATE_THROTTLES + PRODUCT_FEEDBACK_WRITE_THROTTLES
+    classes = ANON_CAPABLE + PRODUCT_FEEDBACK_WRITE_THROTTLES
     scopes = [throttle_class.scope for throttle_class in classes]
 
     assert len(set(scopes)) == len(scopes)

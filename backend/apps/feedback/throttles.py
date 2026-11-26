@@ -1,14 +1,18 @@
-"""Limits for authenticated user-generated content mutations."""
+"""Limits for user-generated content mutations."""
 
 from rest_framework.throttling import UserRateThrottle
 
+from api.throttles import TrustedIdentMixin
 
-class FeedbackCreateBurstThrottle(UserRateThrottle):
+
+# Отзыв о сервисе можно оставить без входа: вошедшего считаем по аккаунту,
+# гостя — по адресу, который подставил nginx (а не по присланному заголовку).
+class FeedbackCreateBurstThrottle(TrustedIdentMixin, UserRateThrottle):
     scope = "testimonial_create_burst"
     rate = "2/hour"
 
 
-class FeedbackCreateSustainedThrottle(UserRateThrottle):
+class FeedbackCreateSustainedThrottle(TrustedIdentMixin, UserRateThrottle):
     scope = "testimonial_create_sustained"
     rate = "5/day"
 

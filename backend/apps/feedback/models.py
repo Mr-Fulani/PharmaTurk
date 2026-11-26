@@ -67,13 +67,19 @@ class TestimonialSectionSettings(models.Model):
         verbose_name='Показывать блок отзывов на главной',
         help_text='Управляет показом карусели отзывов на главной странице сайта.'
     )
+    allow_guest_testimonials = models.BooleanField(
+        default=True,
+        verbose_name='Принимать отзывы без входа в аккаунт',
+        help_text='Если выключить, оставить отзыв смогут только вошедшие в аккаунт. '
+                  'Гостевой отзыв в любом случае появляется на сайте только после галочки «Активен».'
+    )
 
     class Meta:
-        verbose_name = '💬 Настройки блока отзывов'
-        verbose_name_plural = '💬 Отзывы — Настройки блока'
+        verbose_name = '💬 Настройки отзывов'
+        verbose_name_plural = '💬 Отзывы — Настройки'
 
     def __str__(self):
-        return 'Настройки блока отзывов'
+        return 'Настройки отзывов'
 
     def save(self, *args, **kwargs):
         self.pk = 1

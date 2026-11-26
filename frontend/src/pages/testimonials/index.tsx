@@ -59,6 +59,7 @@ export default function TestimonialsPage({
 
   // Form state
   const [formData, setFormData] = useState({
+    author_name: '',
     text: '',
     rating: 0,
   })
@@ -67,6 +68,8 @@ export default function TestimonialsPage({
   const [touchStart, setTouchStart] = useState(0)
   const [touchEnd, setTouchEnd] = useState(0)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  // Сообщение на месте формы: всплывающее вверху экрана на телефоне легко пропустить
+  const [submitted, setSubmitted] = useState(false)
   const isRu = i18n.language?.toLowerCase().startsWith('ru')
   const filteredByUserLabel = isRu
     ? t('filtered_by_user', { lng: 'ru', defaultValue: 'Отзывы пользователя' })
@@ -91,12 +94,10 @@ export default function TestimonialsPage({
     setLoading(false)
   }, [initialTestimonials])
 
-  // Открываем форму, если есть параметр action=add
+  // Открываем форму, если есть параметр action=add (гостю вход не нужен)
   useEffect(() => {
     if (router.isReady && router.query.action === 'add') {
       setShowForm(true)
-      // Если пользователь не авторизован, можно прокрутить к кнопке "Войти", 
-      // но лучше пока просто открыть блок с формой (там будет написано, что надо войти)
       const timer = setTimeout(() => {
         const formElement = document.getElementById('add-testimonial-form')
         if (formElement) formElement.scrollIntoView({ behavior: 'smooth' })
@@ -236,23 +237,24 @@ export default function TestimonialsPage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!user) {
-      alert(t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.'))
-      router.push({ pathname: '/auth', query: authRedirectQuery })
-      return
-    }
-
     setSubmitting(true)
 
     try {
       const formDataToSend = new FormData()
       formDataToSend.append('text', formData.text)
+      if (!user) {
+        // Гость подписывается сам; website — поле-ловушка для роботов, человек его не видит
+        formDataToSend.append('author_name', formData.author_name)
+        const trap = (e.currentTarget as HTMLFormElement).elements.namedItem('website')
+        formDataToSend.append('website', trap instanceof HTMLInputElement ? trap.value : '')
+      }
       if (formData.rating > 0) {
         formDataToSend.append('rating', formData.rating.toString())
       }
 
-      // Добавляем медиа файлы
-      mediaItems.forEach((item, index) => {
+      // Добавляем медиа файлы (от гостей сервер файлы не принимает)
+      const mediaToSend = user ? mediaItems : []
+      mediaToSend.forEach((item, index) => {
         if (item.type === 'image' && item.file) {
           formDataToSend.append(`media_type_${index}`, 'image')
           formDataToSend.append(`media_image_${index}`, item.file)
@@ -272,15 +274,16 @@ export default function TestimonialsPage({
       })
 
       // Сброс формы
-      setFormData({ text: '', rating: 0 })
+      setFormData({ author_name: '', text: '', rating: 0 })
       setMediaItems([])
       setShowForm(false)
 
       // Показываем сообщение об успешной отправке и модерации
       setShowSuccessMessage(true)
+      setSubmitted(true)
       setTimeout(() => {
         setShowSuccessMessage(false)
-      }, 5000) // Скрываем через 5 секунд
+      }, 10000) // Скрываем через 10 секунд
 
       // Обновляем список отзывов (только активные)
       const updatedResponse = await getSingleFlight('/feedback/reviews-feed/', {
@@ -288,9 +291,16 @@ export default function TestimonialsPage({
       })
       const updatedData = updatedResponse.data
       setTestimonials(Array.isArray(updatedData) ? updatedData : updatedData.results || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit testimonial:', error)
-      alert(t('testimonial_submit_error', 'Ошибка при отправке отзыва. Попробуйте еще раз.'))
+      const errorStatus = error?.response?.status
+      if (errorStatus === 401) {
+        // Отзывы без входа выключены в админке
+        alert(t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.'))
+        router.push({ pathname: '/auth', query: authRedirectQuery })
+      } else if (errorStatus === 429) {
+        alert(t('testimonial_too_many', 'Вы уже отправили несколько отзывов. Попробуйте позже.'))
+      } else alert(t('testimonial_submit_error', 'Ошибка при отправке отзыва. Попробуйте еще раз.'))
     } finally {
       setSubmitting(false)
     }
@@ -797,38 +807,34 @@ export default function TestimonialsPage({
           )}
 
           {/* Add Testimonial Button */}
-          {user ? (
-            <div id="add-testimonial-form" className="text-center mt-12 mb-8">
-              <button
-                onClick={() => setShowForm(!showForm)}
-                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                {showForm ? t('cancel', 'Отмена') : t('add_testimonial', 'Оставить отзыв')}
-              </button>
-            </div>
-          ) : (
-            <div id="add-testimonial-form" className="text-center mt-12 mb-8">
-              <p className="text-gray-600 mb-4">
-                {t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.')}
-              </p>
-              <button
-                onClick={() => router.push({ pathname: '/auth', query: authRedirectQuery })}
-                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                {t('login', 'Войти')}
-              </button>
-            </div>
-          )}
+          <div id="add-testimonial-form" className="text-center mt-12 mb-8">
+            {submitted && !showForm && (
+              <div role="status" className="mx-auto mb-6 max-w-md rounded-lg border border-green-200 bg-green-50 p-4 text-left">
+                <p className="text-sm font-medium text-green-800">
+                  {t('testimonial_submitted_title', 'Отзыв отправлен!')}
+                </p>
+                <p className="mt-1 text-sm text-green-700">
+                  {t('testimonial_moderation_message', 'Спасибо за ваш отзыв! Он отправлен на модерацию и будет опубликован после проверки администратором.')}
+                </p>
+              </div>
+            )}
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              {showForm ? t('cancel', 'Отмена') : t('add_testimonial', 'Оставить отзыв')}
+            </button>
+          </div>
 
           {/* Add Testimonial Form */}
-          {showForm && user && (
+          {showForm && (
             <div className="bg-white rounded-xl shadow-lg p-6 mb-12">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {t('add_testimonial', 'Оставить отзыв')}
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                {user && (
+                {user ? (
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-600 mb-1">
                       {t('testimonial_will_be_signed_as', 'Отзыв будет подписан как:')}
@@ -836,6 +842,31 @@ export default function TestimonialsPage({
                     <p className="text-lg font-semibold text-gray-900">
                       {user.username || user.email}
                     </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label htmlFor="testimonial-author-name" className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('testimonial_author_name', 'Ваше имя')} *
+                    </label>
+                    <input
+                      id="testimonial-author-name"
+                      type="text"
+                      required
+                      maxLength={100}
+                      autoComplete="name"
+                      value={formData.author_name}
+                      onChange={(e) => setFormData({ ...formData, author_name: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
+                    {/* Поле-ловушка: скрыто от людей, роботы его заполняют */}
+                    <input
+                      type="text"
+                      name="website"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      aria-hidden="true"
+                      className="hidden"
+                    />
                   </div>
                 )}
 
@@ -867,12 +898,14 @@ export default function TestimonialsPage({
                   <textarea
                     required
                     rows={6}
+                    maxLength={3000}
                     value={formData.text}
                     onChange={(e) => setFormData({ ...formData, text: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   />
                 </div>
 
+                {user && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {t('add_media', 'Добавить медиа')}
@@ -969,6 +1002,13 @@ export default function TestimonialsPage({
                     )}
                   </div>
                 </div>
+                )}
+
+                {!user && (
+                  <p className="text-sm text-gray-600">
+                    {t('testimonial_guest_moderation_note', 'Отзыв появится на сайте после проверки.')}
+                  </p>
+                )}
 
                 <button
                   type="submit"

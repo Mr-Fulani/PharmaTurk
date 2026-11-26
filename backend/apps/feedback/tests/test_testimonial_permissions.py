@@ -3,11 +3,12 @@ from unittest.mock import patch
 
 import pytest
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.feedback import views as feedback_views
+from apps.feedback.models import TestimonialSectionSettings
 
 
 @pytest.fixture
@@ -20,7 +21,6 @@ def request_factory():
     (
         ("list", AllowAny),
         ("retrieve", AllowAny),
-        ("create", IsAuthenticated),
         ("update", IsAdminUser),
         ("partial_update", IsAdminUser),
         ("destroy", IsAdminUser),
@@ -67,12 +67,26 @@ def test_testimonial_reads_remain_public(request_factory, action, method):
     assert response.status_code == status.HTTP_200_OK
 
 
-def test_testimonial_create_requires_authentication(request_factory):
+@pytest.mark.django_db
+def test_testimonial_create_is_open_to_guests_by_default():
+    view = feedback_views.TestimonialViewSet()
+    view.action = "create"
+
+    assert isinstance(view.get_permissions()[0], AllowAny)
+
+
+@pytest.mark.django_db
+def test_testimonial_create_requires_authentication_when_guests_are_off(request_factory):
+    TestimonialSectionSettings.objects.update_or_create(
+        pk=1, defaults={"allow_guest_testimonials": False}
+    )
+
     response = _dispatch(request_factory, "create", "post")
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
+@pytest.mark.django_db
 def test_authenticated_user_can_create_testimonial(request_factory):
     response = _dispatch(
         request_factory,

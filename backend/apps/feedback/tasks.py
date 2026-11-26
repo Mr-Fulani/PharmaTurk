@@ -46,6 +46,44 @@ def notify_admin_product_review(review_id: int, event: str = "created"):
 
 
 @shared_task(ignore_result=True, autoretry_for=(requests.RequestException,), retry_backoff=True, max_retries=3)
+def notify_admin_testimonial(testimonial_id: int):
+    """Сообщает в чат владельца, что отзыв о сервисе ждёт проверки."""
+    from .models import Testimonial
+
+    testimonial = Testimonial.objects.select_related("user").filter(pk=testimonial_id).first()
+    if not testimonial:
+        return
+    token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.warning("Testimonial Telegram notification skipped: credentials are missing")
+        return
+
+    admin_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/admin/feedback/testimonial/{testimonial.pk}/change/"
+    author = f"@{testimonial.user.username}" if testimonial.user else "без входа в аккаунт"
+    rating = f"{testimonial.rating}/5" if testimonial.rating else "—"
+    text = (
+        "💬 Новый отзыв о сервисе ждёт проверки\n"
+        f"Автор: {testimonial.author_name} ({author})\n"
+        f"Оценка: {rating}\n"
+        f"{testimonial.text[:500]}\n\n"
+        f"Открыть в админке: {admin_url}"
+    )
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+        if not response.ok:
+            raise requests.RequestException(
+                f"Telegram API returned HTTP {response.status_code}"
+            )
+    except requests.RequestException:
+        raise requests.RequestException("Telegram API request failed") from None
+
+
+@shared_task(ignore_result=True, autoretry_for=(requests.RequestException,), retry_backoff=True, max_retries=3)
 def notify_admin_product_question(question_id: int):
     from .models import ProductQuestion
 

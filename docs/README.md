@@ -97,6 +97,7 @@
 - [TELEGRAM_CHANNEL.md](TELEGRAM_CHANNEL.md) — Telegram-канал с карточками лекарств, БАДов и масел: очередь, расписание, что не публикуется, инструкция владельцу;
 - [VK_YML_FEED.md](VK_YML_FEED.md) — YML-фид для ВК/Яндекса: фоновая сборка, ссылки разделов, фото в ВК, лимиты ВК и категории;
 - [FEEDBACK_TRANSLATIONS.md](FEEDBACK_TRANSLATIONS.md) — переводы отзывов и вопросов: где заполнять в админке;
+- [GUEST_TESTIMONIALS.md](GUEST_TESTIMONIALS.md) — отзывы о сервисе без входа в аккаунт: проверка перед показом, защита от спама, выключатель в админке;
 - [backend/apps/users/AUTHENTICATION.md](../backend/apps/users/AUTHENTICATION.md) — способы входа, JWT, лимиты частоты, Google/VK/Telegram;
 - [SOCIAL_AUTH_PRODUCTION.md](SOCIAL_AUTH_PRODUCTION.md) — production OAuth/social auth;
 - [DUPLICATE_MODERATION_GUIDE.md](../DUPLICATE_MODERATION_GUIDE.md) — модерация дублей.
