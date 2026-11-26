@@ -10,7 +10,7 @@ from django.contrib.admin.sites import AdminSite
 from django.core.cache import cache
 
 from apps.orders.admin import ClientMessageTemplateAdmin
-from apps.orders.client_messages import render_client_message
+from apps.orders.client_messages import render_client_message, review_link
 from apps.orders.models import ClientMessageTemplate, Order, OrderItem, SourcingRequest
 from apps.orders.sourcing import create_order_for_sourcing_request
 from apps.orders.telegram_buttons import order_keyboard
@@ -140,7 +140,25 @@ def test_shipped_and_review_texts():
         "Если есть вопросы — пишите."
     )
     review = render_client_message("review", order)
-    assert "https://mudaroba.test/testimonials?action=add\n\nСпасибо, что выбрали Mudaroba!" in review
+    order.refresh_from_db()
+    assert f"https://mudaroba.test/testimonials?action=add&k={order.review_token}\n\nСпасибо, что выбрали Mudaroba!" in review
+
+
+def test_review_link_is_personal_stable_and_has_no_personal_data():
+    order, other = _order(contact_phone="+79990001122"), _order()
+    assert order.review_token is None
+
+    assert "testimonials" not in render_client_message("shipped", order)
+    order.refresh_from_db()
+    assert order.review_token is None  # ключ заводится только для просьбы об отзыве
+
+    link = review_link(order)
+    assert link == review_link(Order.objects.get(pk=order.pk)) == review_link(order)
+    assert review_link(other) != link
+    key = link.split("&k=")[1]
+    assert len(key) >= 20 and link == f"https://mudaroba.test/testimonials?action=add&k={key}"
+    for private in (order.number, str(order.pk), "Иван", "Петров", "79990001122"):
+        assert private not in key
 
 
 def test_english_order_gets_english_text_and_falls_back_to_russian():
@@ -149,7 +167,7 @@ def test_english_order_gets_english_text_and_falls_back_to_russian():
     text = render_client_message("air", order)
     assert text.startswith(f"Hello, Иван Петров! This is Mudaroba, regarding your request No. {order.number}.")
     assert "Your order:\n• PAROL 500 mg × 2" in text and "air delivery takes 3 to 14 days" in text
-    assert "https://mudaroba.test/en/testimonials?action=add" in render_client_message("review", order)
+    assert "https://mudaroba.test/en/testimonials?action=add&k=" in render_client_message("review", order)
 
     ClientMessageTemplate.objects.filter(key="shipped").update(text_en="")
     assert render_client_message("shipped", order).startswith("Здравствуйте, Иван Петров!")

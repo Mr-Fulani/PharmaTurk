@@ -19,6 +19,26 @@
   `TELEGRAM_CHAT_ID` приходит сообщение со ссылкой на отзыв в админке
   (`feedback.tasks.notify_admin_testimonial`).
 
+## Отметка «Покупатель» (личная ссылка из заявки)
+
+- **Откуда ссылка**: подстановка `{ссылка на отзывы}` в готовом сообщении «Просьба об отзыве»
+  (кнопка «⭐ Попросить отзыв» под заявкой в Telegram) даёт адрес
+  `/testimonials?action=add&k=<ключ>`. Ключ — случайная строка (`secrets.token_urlsafe(16)`),
+  хранится в заявке (`Order.review_token`) и заводится при первой сборке такого сообщения;
+  повторные нажатия дают ту же ссылку. Номера заявки, имени и телефона в адресе нет.
+- **Что даёт**: отзыв, отправленный по такой ссылке (гостем или вошедшим), связывается с
+  заявкой (`Testimonial.order`), а в публичном API получает `is_buyer: true`. На витрине рядом
+  с именем автора — зелёная отметка «Покупатель» (EN — «Verified buyer»): страница отзывов,
+  страница одного отзыва, блок отзывов на главной.
+- **Проверка перед показом** остаётся: отзыв с отметкой тоже создаётся неактивным.
+- **Один отзыв с отметкой на заявку**: повторный по той же ссылке, а также отзыв с неверным
+  ключом или без ключа принимается как обычный, без отметки и без ошибки для человека.
+- **Наружу не отдаётся** ничего о заявке: ни номер, ни товары, ни суммы — только признак
+  `is_buyer`.
+- **Админка**: в списке отзывов столбец «Покупатель (заявка)» со ссылкой на заявку и фильтр
+  «Отметка „Покупатель“»; в уведомлении владельцу в Telegram — «покупатель, заявка №…».
+  Поле в карточке отзыва только для чтения: вручную отметку не поставить и не снять.
+
 ## Защита от спама
 
 - **Поле-ловушка** `website`: в форме скрыто, человек его не заполняет. Если оно пришло
@@ -47,13 +67,11 @@
 
 - Бэкенд: `backend/apps/feedback/views.py` (`TestimonialViewSet._create_guest`),
   `serializers.py` (`GuestTestimonialCreateSerializer`), `throttles.py`, `tasks.py`,
-  `admin.py`; миграция `feedback/0015` (только новое поле, без сети).
+  `admin.py`; миграции `feedback/0015`, `orders/0027`, `feedback/0016` (только новые поля,
+  без сети); ссылка — `backend/apps/orders/client_messages.py` (`review_link`).
 - Тесты: `backend/apps/feedback/tests/test_guest_testimonials.py`,
-  `test_testimonial_permissions.py`, `backend/api/tests/test_trusted_ident_throttles.py`.
+  `test_testimonial_permissions.py`, `backend/api/tests/test_trusted_ident_throttles.py`,
+  `backend/apps/orders/tests/test_client_messages.py` (ссылка).
 - Фронтенд: `frontend/src/pages/testimonials/index.tsx`; тексты — `testimonial_author_name`,
-  `testimonial_guest_moderation_note`, `testimonial_too_many` в `public/locales/{ru,en}/common.json`.
+  `testimonial_guest_moderation_note`, `testimonial_too_many`, `review_buyer_badge` в `public/locales/{ru,en}/common.json`.
 
-## Чего нет
-
-- Отметки «Покупатель» и личных ссылок из заявки — возможный следующий шаг, решение за
-  владельцем.

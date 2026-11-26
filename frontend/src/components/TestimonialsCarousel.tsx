@@ -1221,6 +1221,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         <span className="min-w-0 truncate font-semibold text-[var(--text-strong)]">
           {testimonial.author_name}
         </span>
+        {testimonial.is_buyer && (
+          <span className="flex-shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
+            {t('review_buyer_badge', 'Покупатель')}
+          </span>
+        )}
       </>
     )
 

@@ -248,6 +248,10 @@ export default function TestimonialsPage({
         const trap = (e.currentTarget as HTMLFormElement).elements.namedItem('website')
         formDataToSend.append('website', trap instanceof HTMLInputElement ? trap.value : '')
       }
+      // Ключ из личной ссылки в сообщении менеджера: отзыв получит отметку «Покупатель»
+      if (typeof router.query.k === 'string' && router.query.k) {
+        formDataToSend.append('order_key', router.query.k)
+      }
       if (formData.rating > 0) {
         formDataToSend.append('rating', formData.rating.toString())
       }
@@ -770,6 +774,11 @@ export default function TestimonialsPage({
                           <div className="text-xs font-semibold text-gray-900 truncate">
                             {testimonial.author_name}
                           </div>
+                          {testimonial.is_buyer && (
+                            <span className="ml-2 flex-shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
+                              {t('review_buyer_badge', 'Покупатель')}
+                            </span>
+                          )}
                         </Link>
                       ) : (
                         <div className="flex items-center flex-1 min-w-0">
@@ -784,6 +793,11 @@ export default function TestimonialsPage({
                           <div className="text-xs font-semibold text-gray-900 truncate">
                             {testimonial.author_name}
                           </div>
+                          {testimonial.is_buyer && (
+                            <span className="ml-2 flex-shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
+                              {t('review_buyer_badge', 'Покупатель')}
+                            </span>
+                          )}
                         </div>
                       )}
                       {testimonial.rating && (
@@ -1107,6 +1121,11 @@ export default function TestimonialsPage({
                     )}
                     <div className="min-w-0">
                       <h2 className="text-2xl font-bold text-gray-900">{selectedTestimonial.author_name}</h2>
+                      {selectedTestimonial.is_buyer && (
+                        <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                          {t('review_buyer_badge', 'Покупатель')}
+                        </span>
+                      )}
                       <p className="text-sm text-gray-500">
                         {new Date(selectedTestimonial.created_at).toLocaleDateString('ru-RU')}
                       </p>

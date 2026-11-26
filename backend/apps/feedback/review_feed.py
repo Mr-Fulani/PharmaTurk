@@ -87,7 +87,7 @@ def _testimonial_queryset(ids):
         .prefetch_related(Prefetch("media", queryset=media_queryset), "translations")
         .only(
             "id", "user_id", "user__id", "user__username", "user__avatar",
-            "author_name", "author_avatar", "text", "rating", "created_at",
+            "author_name", "author_avatar", "text", "rating", "created_at", "order_id",
         )
     )
 
@@ -270,6 +270,7 @@ def serialize_review_feed_page(rows, *, request):
                 "product_name": None,
                 "subject_image_url": None,
                 "homepage_priority": priority,
+                "is_buyer": item["is_buyer"],
             })
             continue
 
@@ -305,5 +306,6 @@ def serialize_review_feed_page(rows, *, request):
             "product_name": subject_names.get((item["product_type"], item["product_slug"]), item["product_name"]),
             "subject_image_url": item["subject_image_url"] if not media else None,
             "homepage_priority": priority,
+            "is_buyer": False,
         })
     return ReviewFeedItemSerializer(result, many=True).data

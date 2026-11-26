@@ -635,6 +635,15 @@ class Order(models.Model):
         _("Тип заявки"), max_length=16, choices=Kind.choices, default=Kind.CART, db_index=True,
     )
     status = models.CharField(_("Статус для клиента"), max_length=32, choices=OrderStatus.choices, default=OrderStatus.NEW)
+    review_token = models.CharField(
+        _("Ключ личной ссылки на отзыв"),
+        max_length=43,
+        null=True,
+        blank=True,
+        unique=True,
+        editable=False,
+        help_text=_("Создаётся, когда менеджер берёт сообщение «Просьба об отзыве»."),
+    )
     processing_status = models.CharField(
         _("Обработка"),
         max_length=16,

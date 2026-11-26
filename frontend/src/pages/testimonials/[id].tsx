@@ -184,6 +184,11 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
                     )}
                     <div>
                       <h1 className="text-3xl font-bold text-gray-900">{testimonial.author_name}</h1>
+                      {testimonial.is_buyer && (
+                        <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                          {t('review_buyer_badge', 'Покупатель')}
+                        </span>
+                      )}
                       <p className="mt-1 text-sm text-gray-500">
                         {new Date(testimonial.created_at).toLocaleDateString('ru-RU')}
                       </p>

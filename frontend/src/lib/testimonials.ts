@@ -19,6 +19,7 @@ export interface Testimonial {
   created_at: string
   user_id?: number | null
   user_username?: string | null
+  is_buyer?: boolean
 }
 
 export function buildTestimonialUrl(id: number | string): string {
@@ -43,6 +44,7 @@ export interface ReviewFeedItem {
   product_name: string | null
   subject_image_url: string | null
   homepage_priority: number
+  is_buyer?: boolean
 }
 
 export function buildReviewDetailUrl(review: ReviewFeedItem): string {

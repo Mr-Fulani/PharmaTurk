@@ -41,6 +41,16 @@ class Testimonial(models.Model):
         default=False,
         verbose_name='Активен'
     )
+    order = models.ForeignKey(
+        'orders.Order',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='testimonials',
+        verbose_name='Заявка покупателя',
+        help_text='Заполняется, когда отзыв пришёл по личной ссылке из заявки; '
+                  'на сайте у такого отзыва отметка «Покупатель».'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Дата создания'
