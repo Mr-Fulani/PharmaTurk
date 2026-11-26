@@ -21,6 +21,7 @@ def request_factory():
     (
         ("list", AllowAny),
         ("retrieve", AllowAny),
+        ("create", feedback_views.TestimonialCreatePermission),
         ("update", IsAdminUser),
         ("partial_update", IsAdminUser),
         ("destroy", IsAdminUser),
@@ -68,11 +69,10 @@ def test_testimonial_reads_remain_public(request_factory, action, method):
 
 
 @pytest.mark.django_db
-def test_testimonial_create_is_open_to_guests_by_default():
-    view = feedback_views.TestimonialViewSet()
-    view.action = "create"
+def test_testimonial_create_is_open_to_guests_by_default(request_factory):
+    response = _dispatch(request_factory, "create", "post")
 
-    assert isinstance(view.get_permissions()[0], AllowAny)
+    assert response.status_code == status.HTTP_201_CREATED
 
 
 @pytest.mark.django_db
@@ -86,7 +86,6 @@ def test_testimonial_create_requires_authentication_when_guests_are_off(request_
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.django_db
 def test_authenticated_user_can_create_testimonial(request_factory):
     response = _dispatch(
         request_factory,

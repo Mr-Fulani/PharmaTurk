@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAdminUser, IsAuthenticated
 from rest_framework.views import APIView
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.utils.text import slugify
@@ -158,6 +158,15 @@ def _build_testimonial_media_filename(user, media_type, original_name):
     return f"{base}-{suffix}{ext}"
 
 
+class TestimonialCreatePermission(BasePermission):
+    """Вошедший может оставить отзыв всегда, гость — пока это не выключено в настройках отзывов."""
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and request.user.is_authenticated
+        ) or TestimonialSectionSettings.load().allow_guest_testimonials
+
+
 class TestimonialViewSet(viewsets.ModelViewSet):
     """
     ViewSet для работы с отзывами.
@@ -175,14 +184,10 @@ class TestimonialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Разрешения для разных действий."""
-        if self.action == 'create':
-            # Гость может оставить отзыв, пока это не выключено в настройках отзывов.
-            if TestimonialSectionSettings.load().allow_guest_testimonials:
-                return [AllowAny()]
-            return [IsAuthenticated()]
         permission_class = {
             'list': AllowAny,
             'retrieve': AllowAny,
+            'create': TestimonialCreatePermission,
         }.get(self.action, IsAdminUser)
         return [permission_class()]
 
