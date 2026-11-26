@@ -895,6 +895,15 @@ def notify_new_order_telegram(
         address = " ".join((getattr(order, "shipping_address_text", "") or "").split())
         address_block = "📍 <b>Адрес доставки</b>\n" + (h(address) if address else "не указан")
         total = [f"💰 <b>Итого: {order.total_amount} {order.currency}</b>"]
+        # Из чего сложено «Итого» — суммы самой заявки, те же, что в чеке. Доставка 0: товар с
+        # расчётом доставки менеджером или сработал порог бесплатной доставки — пишем словами
+        total.append(f"Товары: {order.subtotal_amount} {order.currency}")
+        if order.shipping_amount:
+            total.append(f"Стоимость доставки: {order.shipping_amount} {order.currency}")
+        else:
+            total.append("Стоимость доставки: в «Итого» не вошла (бесплатная или её считает менеджер)")
+        if order.discount_amount:
+            total.append(f"Скидка: −{order.discount_amount} {order.currency}")
         if on_request:
             total.append("Цена по запросу (в сумму не вошли): " + h("; ".join(on_request)))
         total.append(f"Оплата: {h(payment_info)}")

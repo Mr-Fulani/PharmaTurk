@@ -1,6 +1,7 @@
 """Telegram-уведомление о заявке: менеджеру нужны контакты и канал связи."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import quote
@@ -16,6 +17,9 @@ def _order(**overrides):
         id=9,
         number="REQ-9",
         user=SimpleNamespace(telegram_id="555", telegram_notifications=True),
+        subtotal_amount=Decimal("150.00"),
+        shipping_amount=Decimal("0.00"),
+        discount_amount=Decimal("0.00"),
         total_amount="150.00",
         currency="RUB",
         payment_method="manager",
@@ -68,6 +72,27 @@ class RequestTelegramNotificationTests(SimpleTestCase):
         self.assertIn("<code>REQ-9</code>", admin)
         self.assertIn("Итого: 150.00 RUB", admin)
         self.assertEqual(telegram_post.call_args_list[0].kwargs["json"]["parse_mode"], "HTML")
+
+    def test_admin_message_shows_goods_and_shipping_cost_apart_from_total(self, select_related, telegram_post, *_):
+        order = _order(
+            shipping_amount=Decimal("25.50"), discount_amount=Decimal("10.00"), total_amount=Decimal("165.50"),
+        )
+        admin = self._texts(select_related, telegram_post, order)["admin-chat"]
+
+        self.assertIn(
+            "💰 <b>Итого: 165.50 RUB</b>\nТовары: 150.00 RUB\nСтоимость доставки: 25.50 RUB\nСкидка: −10.00 RUB\n",
+            admin,
+        )
+
+    def test_admin_message_says_when_shipping_cost_is_not_calculated(self, select_related, telegram_post, *_):
+        admin = self._texts(select_related, telegram_post, _order())["admin-chat"]
+
+        self.assertIn(
+            "💰 <b>Итого: 150.00 RUB</b>\nТовары: 150.00 RUB\n"
+            "Стоимость доставки: в «Итого» не вошла (бесплатная или её считает менеджер)\nОплата:",
+            admin,
+        )
+        self.assertNotIn("Скидка", admin)
 
     def test_admin_message_shows_delivery_address(self, select_related, telegram_post, *_):
         order = _order(shipping_address_text="Россия, 101000, Москва,\nул. Тверская 1 <кв. 5> & подъезд 2")
