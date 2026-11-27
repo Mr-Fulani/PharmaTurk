@@ -187,9 +187,11 @@ _CONCEPTS = {
     "pharmacist": (r"eczaci", r"фармацевт|провизор|аптек", r"pharmac"),
     "kidney": (r"bobrek", r"почк|почек|почеч|нефр", r"kidney|renal|nephr"),
     "liver": (r"karacig|hepat", r"печен|печён|гепат", r"liver|hepat"),
-    "heart": (r"\bkalp|\bkalb|kardi", r"сердц|сердеч|кардио|инфаркт", r"heart|cardi"),
+    # «çıkardıysanız» (вынули) после свёртки — «cikardiysaniz»: «kardi» в нём не сердце (NORLEVO, круг 7).
+    "heart": (r"\bkalp|\bkalb|(?<!ci)kardi", r"сердц|сердеч|кардио|инфаркт", r"heart|cardi"),
     "child": (r"cocuk|pediatri", r"\bдет|ребен|ребён|педиатр", r"child|pediatr|paediatr|kids"),
-    "pregnancy": (r"hamile|\bgebe", r"беремен", r"pregnan"),
+    # «gebe kalamama» — «inability to conceive» (PROLUTON DEPOT, круг 7).
+    "pregnancy": (r"hamile|\bgebe", r"беремен", r"pregnan|conceiv"),
     "breastfeeding": (r"emzir|anne sut", r"кормл|кормящ|кормить|молок|лактац|грудью|вскармлив", r"breast|lactat|nursing"),
     "allergy": (r"all?er[jg]i", r"аллерг", r"allerg"),
     "infection": (r"enfeks", r"инфекц|инфицир", r"infect"),

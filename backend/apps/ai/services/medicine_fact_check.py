@@ -155,7 +155,10 @@ def is_proper_name_line(text: Any) -> bool:
 # Строка — только топоним адреса фирмы: «Bağcılar», «Başakşehir/İstanbul», «Karabağlar - İzmir»;
 # одиночная буква или маркер списка источника («ğ», «ç) Пемфигус…»), материал блистера «Alü/Alü»
 # (очередь модерации 27.10.2026: 14 разделов «не переведено» из-за таких строк).
-_PLACE_LINE = re.compile(r"[A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s*[/-]\s*[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)*\s*[/-]?")
+# Город после «/» или «-» бывает заглавными: «Karabağlar - İZMİR» (PRECEDEX, круг 7).
+_PLACE_LINE = re.compile(
+    r"[A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s*[/-]\s*[A-ZÇĞİÖŞÜ](?:[a-zçğıöşü]+|[A-ZÇĞİÖŞÜ]+))*\s*[/-]?"
+)
 _SOURCE_LIST_MARKER = re.compile(r"^\s*[a-zçğıöşü]\)\s*")
 _BLISTER_MATERIAL = re.compile(r"\bAlü\s*/\s*Alü\b|\bAlü\b")
 
